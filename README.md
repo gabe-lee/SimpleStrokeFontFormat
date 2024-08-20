@@ -11,6 +11,7 @@ Version 0.1 technical specification for the SimpleStrokeFontFormat (.ssff)
   - [Array types](#array-types)
   - [Structural types](#structural-types)
 - [File Format](#file-format)
+  - [SimpleStrokeFont](#simplestrokefont)
 
 
 ## Motivation
@@ -38,7 +39,7 @@ However for a significant portion of real-world use cases this level of 'perfect
 
 #### Non-Goals
 - Replace TrueType/OpenType as the industry standard
-  - Those formats provide far more nuance than this format does and are already deepy embedded in font rendering pipelines.
+  - Those formats provide far more nuance than this format does and are already deeply embedded in font rendering pipelines.
 - Support especially complex writing systems. Efforts *may* be made to support some of these cases, as long as the solution fits within the above goals
 - Allow *complete* creative freedom when designing font glyphs/chars
 - Support alternate glyph shapes for very small font sizes
@@ -83,29 +84,71 @@ These types wrap a set of related data fields, usually so they can be reused in 
 ### `EmployeeRecordTable`
 | Total Size | File Alignment |
 | :-------- | -------- |
-|8 + ( [employee count] * [total size of `EmpRecord`] ) | 4 |
+| 8 + ( [employee count] * [total size of `EmpRecord`] ) | 4 |
 
 | | Offset | Type | Allowed Values | Description |
 | :--: | ----------: | -------- | :--------: | ---------- |
-| company tag | +0 | `u32` | 1, 2, 3, 4 | A numeric tag indicating what company these employees work for |
-| employee count | +4 | `u32`  | all | how many employees are stored in the employee records list in this table  |
-| record list | +8 | `[]EmpRecord` | (see `EmpRecord`) | An array of employee records stored in sorted order according to their employee id |
+| company tag | +0 | [`CompanyTag(u8)`](#companytag) | (see type) | A numeric tag indicating what company these employees work for |
+| employee count | +4 | [`u32`](#primitive-types)  | all | how many employees are stored in the employee records list in this table  |
+| record list | +8 | `[]EmpRecord` | (see type) | An array of employee records stored in sorted order according to their employee id |
 
 ##### Notes:
-- The 'Offest' column describes the byte offset *from the start of the structure*, NOT from the start of the file.
+- The 'Offest' column describes the byte offset *from the start of the structure*, NOT from the start of the file (With the exception of the [`SimpleStrokeFont`](#simplestrokefont) structure, which IS the font file itself).
 - 'File Alignment' refers to the byte alignment the structure is guaranteed to be stored at *relative to file start*. This means that as long as you load the file data into a buffer that is aligned to this alignment or greater, a pointer to the structure's byte offset can be directly interpreted as a pointer to a matching data type in the programing language of your choice (dependant on programming language capabilities)
 
+#### Enumeration types
+These types are primitive numeric types with a finite list of static specification-defined allowed values. Only the *numeric value* is stored in the actual font file, but the specification provides human-readable meaning for the values to assist in code implementation (the 'Tag' column). Following from the fictional 'Employee' example above, enumeration types will be described in the following format:
 
-## File Format
+### `CompanyTag`
+| Base Type | Size |
+| :-------: | ---- |
+|[`u8`](#primitive-types) | 1 |
+
+| Tag | Value | Info |
+| :--: | :---------: | ---- |
+| Goggle | 1 | search engine |
+| Amazing | 2 | web store |
+| WalkMart | 3 | department store | 
+| NewFlix | 4 | media streaming |
+
+***
+
+# File Format
 The font file in its entirety (or the portion of a data buffer the file is located at) is represented with the following structure:
 ### `SimpleStrokeFont`
 | Total Size | File Alignment |
 | :-------- | -------- |
-|8 + ( [employee count] * [total size of `EmpRecord`] ) | 4 |
+| (see below) | (dependant on consumer implementation, loading the file to a location with a memory alignment of 4 is recommended) |
 
-| | Offset | Type | Allowed Values | Description |
+| | Offset | Type | Allowed Value(s) | Description |
 | :--: | ----------: | -------- | :--------: | ---------- |
-| SSFF tag | +0 | [`u32`](#primitive-types) | 1179013971 | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
-| Minor Verson | +4 | [`u16`](#primitive-types) | highest minor version |The minor version of SSFF this file adheres to (signals what additional features *may* be present) |
-| Major Version | +6 | [`u8`](#primitive-types)  | 1 | The major version of SSFF this file adheres to  |
+| SSFF Tag | +0 | [`u32`](#primitive-types) | 0x46465353 | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
+| Total Size | +4 | [`u32`](#primitive-types) | any | The *total* byte length of the entire font file (or the portion of the data bufer the font file occupies) |
+| Minor Verson | +8 | [`u16`](#primitive-types) | highest minor version |The minor version of SSFF this file adheres to (signals what additional features *may* be present) |
+| Major Version | +10 | [`u8`](#primitive-types)  | 1 | The major version of SSFF this file adheres to  |
+| Table Count | +11 | [`u8`](#primitive-types)  | any | How many data tables the font contains. |
+| Table Offsets | +12 | [`[]TableOffset`](#primitive-types)  | (see type) | An array of Tag/Offest pairs used to locate the file location of a specific data table |
+| Table Data | +(12 + (Table Count * 8)) | (various)  | (n/a) | The remainder of the font file data, organized into individual data tables |
 
+### `TableOffset`
+| Total Size | File Alignment |
+| :-------- | -------- |
+| 8 | 4 |
+
+| | Offset | Type | Allowed Value(s) | Description |
+| :--: | ----------: | -------- | :--------: | ---------- |
+| Table Tag | +0 | [`TableTag(u32)`](#tabletag) | (see type) | A tag indicating which table is located at the following file location |
+| Table Location | +4 | [`u32`](#primitive-types) | any | Table location (byte offset) relative to the *start of the font file* |
+
+### `TableTag`
+| Base Type | Size |
+| :-------: | ---- |
+|[`u32`](#primitive-types) | 4 |
+
+| Tag | Value | Info |
+| :--: | :---------: | ---- |
+| Vertex  | 0x54524556 | The value corresponds to the UTF-8 string 'VERT' interpreted as a Little Endian u32, see [`VertexTable`](#vertextable) |
+| Stroke  | 0x4B525453 | The value corresponds to the UTF-8 string 'STRK' interpreted as a Little Endian u32, see [`StrokeTable`](#stroketable) |
+| Glyph   | 0x46594C47 | The value corresponds to the UTF-8 string 'GLYF' interpreted as a Little Endian u32, see [`GlyphTable`](#glyphtable) |
+| CharMap | 0x50414D43 | The value corresponds to the UTF-8 string 'CMAP' interpreted as a Little Endian u32, see [`CharMapTable`](#charmaptable) |
+| Kerning | 0x4E52454B | The value corresponds to the UTF-8 string 'KERN' interpreted as a Little Endian u32, see [`KerningTable`](#kerningtable) |
