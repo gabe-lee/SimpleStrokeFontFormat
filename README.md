@@ -47,12 +47,13 @@ However for a significant portion of real-world use cases this level of 'perfect
 
 ## Terminology and Conventions
 #### Basic terms
-| Term | Explaination |
-| ---- | ------------ |
-| SSFF, .ssff | Shorthand for 'SimpleStrokeFontFormat' and its coresponding file extension|
-| TTF, .ttf | Shorthand for 'TrueType Font' and its coresponding file extension |
-| OTF, .otf | Shorthand for 'OpenType Font' and its coresponding file extension |
+| Term          | Explaination |
+|---------------| ------------ |
+| SSFF, .ssff   | Shorthand for 'SimpleStrokeFontFormat' and its coresponding file extension|
+| TTF, .ttf     | Shorthand for 'TrueType Font' and its coresponding file extension |
+| OTF, .otf     | Shorthand for 'OpenType Font' and its coresponding file extension |
 | Little Endian | Individual bytes in a numeric value are stored smallest-byte-first when reading from a buffer. For example, the hexidecimal number `0xAABBCCDD` would be  stored as `[0xDD, 0xCC, 0xBB, 0xAA]` |
+| "Guaranteed"  | The term "guaranteed" is used throughout this specification to mean that <ins>**IF THE FONT FILE IS CREATED CORRECTLY AND IN FULL COMPLIANCE WITH THIS SPECIFICIATION**</ins> then the described condition is guaranteed to be true |
 
 #### Number notation
 | Type | Value | Value as Decimal |
@@ -111,44 +112,71 @@ These types are primitive numeric types with a finite list of static specificati
 | WalkMart | 3 | department store | 
 | NewFlix | 4 | media streaming |
 
+[Table of Contents](#table-of-contents)
+***
 ***
 
 # File Format
 The font file in its entirety (or the portion of a data buffer the file is located at) is represented with the following structure:
 ### `SimpleStrokeFont`
-| Total Size | File Alignment |
-| :-------- | -------- |
-| (see below) | (dependant on consumer implementation, loading the file to a location with a memory alignment of 4 is recommended) |
+| Total Size  | File Alignment             |
+|:-----------:|:--------------------------:|
+| (see below) | (recommended 4, see notes) |
 
-| | Offset | Type | Allowed Value(s) | Description |
-| :--: | ----------: | -------- | :--------: | ---------- |
-| SSFF Tag | +0 | [`u32`](#primitive-types) | 0x46465353 | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
-| Total Size | +4 | [`u32`](#primitive-types) | any | The *total* byte length of the entire font file (or the portion of the data bufer the font file occupies) |
-| Minor Verson | +8 | [`u16`](#primitive-types) | highest minor version |The minor version of SSFF this file adheres to (signals what additional features *may* be present) |
-| Major Version | +10 | [`u8`](#primitive-types)  | 1 | The major version of SSFF this file adheres to  |
-| Table Count | +11 | [`u8`](#primitive-types)  | any | How many data tables the font contains. |
-| Table Offsets | +12 | [`[]TableOffset`](#primitive-types)  | (see type) | An array of Tag/Offest pairs used to locate the file location of a specific data table |
-| Table Data | +(12 + (Table Count * 8)) | (various)  | (n/a) | The remainder of the font file data, organized into individual data tables |
+|               | Offset               | Type                                 | Allowed Value(s) | Description |
+|:-------------:|---------------------:|:------------------------------------:|:----------------:|:------------|
+| SSFF Tag      | +0                   | [`u32`](#primitive-types)            | 0x46465353       | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
+| Total Size    | +4                   | [`u32`](#primitive-types)            | any(u32)         | The *total* byte length of the entire font file |
+| Minor Verson  | +8                   | [`u16`](#primitive-types)            | 0                | The minor version of SSFF this file adheres to  |
+| Major Version | +10                  | [`u8`](#primitive-types)             | 1                | The major version of SSFF this file adheres to  |
+| Table Count   | +11                  | [`u8`](#primitive-types)             | any(u8)          | How many data tables the font contains. |
+| Table Offsets | +12                  | [`[]TableOffset`](#tableoffset)  | (see type)       | An array of Tag/Offest pairs used to locate the file location of a specific data table |
+| Table Data    | +(12+(TableCount*8)) | (various)                            | (n/a)            | The remainder of the font file data, organized into individual data tables |
+
+This is the top-level structure that encompasses the entirety of the data for a distinct font.
+
+Each entry in the [`[]TableOffset`](#tableoffset) array MUST be in sorted order according to the numeric value of its [`TableTag`](#tabletag), with all required tables coming before all optional tables. And in fact, since required tables are *required* to exist and always in sorted order, consumer code has the option to hard-code file offsets to more quickly locate data offsets of required tables, as long as the font file is known to be properly formatted according to this specificiation (see [`TableTag`](#tabletag) for details).
+
+The "Table Data" section of the file should be treated as a byte array (`[]u8`) with an unknown/undefined data layout until an individual data table is located within it using the [`[]TableOffset`](#tableoffset) array
+
+It is recommended to load the font file into a buffer (or a location within a buffer) that is aligned to a byte alignment of 4. The SSFF specification requires that primitive types are always located at a correct byte alignment relative to the begining of the font file, and the largest alignment of any type used in the specification is 4. This allows the consuming code to take advantage of an optimization where a numeric value can be directly interperted from the data buffer by simply casting its memory pointer/offset as a pointer/reference to the matching type in the language (dependant on consuming language capabilities, languages that do not support pointer casts can still assemble the numeric value by shifting each byte into the type manually, and most languages include standard functions to do exactly that)
+
+[Table of Contents](#table-of-contents)
+***
 
 ### `TableOffset`
 | Total Size | File Alignment |
-| :-------- | -------- |
-| 8 | 4 |
+|:----------:|:--------------:|
+| 8          | 4              |
 
-| | Offset | Type | Allowed Value(s) | Description |
-| :--: | ----------: | -------- | :--------: | ---------- |
-| Table Tag | +0 | [`TableTag(u32)`](#tabletag) | (see type) | A tag indicating which table is located at the following file location |
-| Table Location | +4 | [`u32`](#primitive-types) | any | Table location (byte offset) relative to the *start of the font file* |
+|                | Offset | Type                        | Allowed Value(s) | Description |
+|:--------------:|-------:|:---------------------------:|:----------------:| ----------- |
+| Table Tag      | +0     | [`TableTag(u8)`](#tabletag) | (see type)       | A tag indicating which table is located at the following file location |
+| Table Location | +4     | [`u32`](#primitive-types)   | any(u32)         | Table location (byte offset) relative to the *start of the font file* |
+
+Each TableOffset is a tag/offset pair that tells consumer code where to find a specific data table.
+
+Required table offsets are guaranteed[*](#terminology-and-conventions) to exist and be in sorted order in a properly formed font file, allowing consumer code to 'hard-code' the location of the `TableOffset` relative to the file start for all required tables as long as the font file is known to be correctly formed (see [`TableTag`](#tabletag) for details).
+
+[Table of Contents](#table-of-contents)
+***
 
 ### `TableTag`
 | Base Type | Size |
 | :-------: | ---- |
-|[`u32`](#primitive-types) | 4 |
+|[`u8`](#primitive-types) | 1 |
 
-| Tag | Value | Info |
-| :--: | :---------: | ---- |
-| Vertex  | 0x54524556 | The value corresponds to the UTF-8 string 'VERT' interpreted as a Little Endian u32, see [`VertexTable`](#vertextable) |
-| Stroke  | 0x4B525453 | The value corresponds to the UTF-8 string 'STRK' interpreted as a Little Endian u32, see [`StrokeTable`](#stroketable) |
-| Glyph   | 0x46594C47 | The value corresponds to the UTF-8 string 'GLYF' interpreted as a Little Endian u32, see [`GlyphTable`](#glyphtable) |
-| CharMap | 0x50414D43 | The value corresponds to the UTF-8 string 'CMAP' interpreted as a Little Endian u32, see [`CharMapTable`](#charmaptable) |
-| Kerning | 0x4E52454B | The value corresponds to the UTF-8 string 'KERN' interpreted as a Little Endian u32, see [`KerningTable`](#kerningtable) |
+| Tag     | Value | Required | Table Indicated                 | Guaranteed[*](#terminology-and-conventions) [`TableOffset`](#tableoffset) location from File Start|
+|:-------:|:-----:|:--------:|:-------------------------------:|:----------------------------------------------------------------:|
+| CharMap | 1     | Yes      | [`CharMapTable`](#charmaptable) | +12                                                              |
+| Vertex  | 2     | Yes      | [`VertexTable`](#vertextable)   | +20                                                              |
+| Stroke  | 3     | Yes      | [`StrokeTable`](#stroketable)   | +28                                                              |
+| Glyph   | 4     | Yes      | [`GlyphTable`](#glyphtable)     | +36                                                              |
+| Info    | 5     | No       | [`InfoTable`](#kerningtable)    | ---                                                              |
+| Kerning | 6     | No       | [`KerningTable`](#kerningtable) | ---                                                              |
+| Lang    | 7     | No       | [`LangTable`](#langtable)       | ---                                                              |
+
+An enumeration type that defines which numeric value of the "Table Tag" field in [`TableOffset`](#tableoffset) referst to which font data table. Also included are the guaranteed[*](#terminology-and-conventions) offsets relative to font file start where the [`TableOffset`](#tableoffset) of required tables can be found (in a properly formatted font file)
+
+[Table of Contents](#table-of-contents)
+***
