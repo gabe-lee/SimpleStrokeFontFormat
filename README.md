@@ -12,6 +12,9 @@ Version 0.1 technical specification for the SimpleStrokeFontFormat (.ssff)
   - [Structural types](#structural-types)
 - [File Format](#file-format)
   - [SimpleStrokeFont](#simplestrokefont)
+    - [TableOffset](#tableoffset)
+    - [TableTag](#tabletag)
+  - [CharMapTable]
 
 
 ## Motivation
@@ -162,21 +165,43 @@ Required table offsets are guaranteed[*](#terminology-and-conventions) to exist 
 ***
 
 ### `TableTag`
-| Base Type | Size |
-| :-------: | ---- |
-|[`u8`](#primitive-types) | 1 |
+| Base Type               | Size | File Alignment |
+|:-----------------------:|------|----------------|
+|[`u8`](#primitive-types) | 1    | 4              |
 
-| Tag     | Value | Required | Table Indicated                 | Guaranteed[*](#terminology-and-conventions) [`TableOffset`](#tableoffset) location from File Start|
-|:-------:|:-----:|:--------:|:-------------------------------:|:----------------------------------------------------------------:|
-| CharMap | 1     | Yes      | [`CharMapTable`](#charmaptable) | +12                                                              |
-| Vertex  | 2     | Yes      | [`VertexTable`](#vertextable)   | +20                                                              |
-| Stroke  | 3     | Yes      | [`StrokeTable`](#stroketable)   | +28                                                              |
-| Glyph   | 4     | Yes      | [`GlyphTable`](#glyphtable)     | +36                                                              |
-| Info    | 5     | No       | [`InfoTable`](#kerningtable)    | ---                                                              |
-| Kerning | 6     | No       | [`KerningTable`](#kerningtable) | ---                                                              |
-| Lang    | 7     | No       | [`LangTable`](#langtable)       | ---                                                              |
+| Tag      | Value | Required | Table Indicated                  | Guaranteed[*](#terminology-and-conventions) [`TableOffset`](#tableoffset) location from File Start|
+|:--------:|:-----:|:--------:|:--------------------------------:|:-----:|
+| CharMap  | 0     | Yes      | [`CharMapTable`](#charmaptable)  | +12   |
+| Vertex   | 1     | Yes      | [`VertexTable`](#vertextable)    | +20   |
+| Stroke   | 2     | Yes      | [`StrokeTable`](#stroketable)    | +28   |
+| Glyph    | 3     | Yes      | [`GlyphTable`](#glyphtable)      | +36   |
+| Info     | 4     | No       | [`InfoTable`](#infotable)        | ---   |
+| Kerning  | 5     | No       | [`KerningTable`](#kerningtable)  | ---   |
+| Ligatures| 6     | No       | [`LigatureTable`](#ligaturetable)| ---   |
+| Lang     | 7     | No       | [`LangTable`](#langtable)        | ---   |
 
 An enumeration type that defines which numeric value of the "Table Tag" field in [`TableOffset`](#tableoffset) referst to which font data table. Also included are the guaranteed[*](#terminology-and-conventions) offsets relative to font file start where the [`TableOffset`](#tableoffset) of required tables can be found (in a properly formatted font file)
+
+As a note, TTF and OTF use table tags based on human-readable ascii strings. The SSFF has been designed to offer maximal opportunities for code optimizations, in this case optimizing for the common use of a [switch-statement](https://en.wikipedia.org/wiki/Switch_statement#Compilation) to identify table tags. Although human-readable strings may be an ergonomic shortcut for developers, it imposes a slight disadvantage for compilers. 
+
+[Table of Contents](#table-of-contents)
+***
+
+### `CharMapTable`
+| Total Size | File Alignment |
+|:----------:|:--------------:|
+| 8          | 4              |
+
+|                 | Offset | Type                        | Allowed Value(s) | Description |
+|:---------------:|-------:|:---------------------------:|:----------------:| ----------- |
+| Char Count      | +0     | [`TableTag(u8)`](#tabletag) | (see type)       | How many character codes this font contains |
+| Smallest Char   | +4     | [`u32`](#primitive-types)   | any(u32)         | The smallest character code this font contains |
+| Largest Char    | +8     | [`u32`](#primitive-types)   | any(u32)         | The largest character code this font contains |
+| Contiguous Count| +12    | [`u32`](#primitive-types)   | any(u32)         | The number of contiguous segments of supported character codes in this |
+
+Each TableOffset is a tag/offset pair that tells consumer code where to find a specific data table.
+
+Required table offsets are guaranteed[*](#terminology-and-conventions) to exist and be in sorted order in a properly formed font file, allowing consumer code to 'hard-code' the location of the `TableOffset` relative to the file start for all required tables as long as the font file is known to be correctly formed (see [`TableTag`](#tabletag) for details).
 
 [Table of Contents](#table-of-contents)
 ***
