@@ -41,7 +41,7 @@ However for a significant portion of real-world use cases this level of 'perfect
 - Store data at correct byte alignments (relative to file start) in Little Endian format
 - Have only ONE major version of the file format: 1.x, which provides the  specifification for all *required* aspects of the font
   - Minor versions add only additional specifications for optional data in a backwards-compatible way for existing implementations of older format versions
-  -  (While specification is in development version 0.x is the standin for 1.x, and changes to 0.x may not be backwards compatible)
+  - (While specification is in development version 0.x is the standin for 1.x, and changes to 0.x may not be backwards compatible)
 
 #### Non-Goals
 - Replace TrueType/OpenType as the industry standard
@@ -65,42 +65,42 @@ However for a significant portion of real-world use cases this level of 'perfect
 | "Guaranteed"  | The term "guaranteed" is used throughout this specification to mean that <ins>**IF THE FONT FILE IS CREATED CORRECTLY AND IN FULL COMPLIANCE WITH THIS SPECIFICIATION**</ins> then the described condition is guaranteed to be true |
 
 #### Number notation
-| Type | Value | Value as Decimal |
-| ---- | -----------: | ---: |
-| Decimal | 42 | 42 |
-| Hexidecimal| 0x2A | 42 |
-| Binary | 0b00101010 | 42 |
+| Type       | Value      | Value as Decimal |
+|------------|-----------:|---:|
+| Decimal    | 42         | 42 |
+| Hexidecimal| 0x2A       | 42 |
+| Binary     | 0b00101010 | 42 |
 
 #### Primitive types
-| Type | Size (Bytes) | Min Value | Max Value | Byte Order |
-| :--- | :----------: | --------: | --------: | ---------- |
-| `bool` | 1 | 0 (false) | 1 (true) | N/A |
-| `u8` | 1 | 0 | 255 | N/A |
-| `i8` | 1 | -128  | 127 | N/A |
-| `u16` | 2 | 0 | 65535 | Little Endian |
-| `i16` | 2 | -32768 | 32767 | Little Endian |
-| `u32` | 4 | 0 | 4294967295 | Little Endian |
-| `i32` | 4 | -2147483648 | 2147483647| Little Endian |
+| Type   | Size (Bytes) | Min Value   | Max Value | Byte Order |
+|:-------|:------------:|------------:|----------:|------------|
+| `bool` | 1            | 0 (false)   | 1 (true)  | N/A |
+| `u8`   | 1            | 0           | 255       | N/A |
+| `i8`   | 1            | -128        | 127       | N/A |
+| `u16`  | 2            | 0           | 65535     | Little Endian |
+| `i16`  | 2            | -32768      | 32767     | Little Endian |
+| `u32`  | 4            | 0           | 4294967295| Little Endian |
+| `i32`  | 4            | -2147483648 | 2147483647| Little Endian |
 
 #### Array types
-| Type | Description | Example |
-| ---- | ---- | ---- |
-| `[]T` | An array of variable length containing items of type `T`. The length of this array must be provided separately | `[]u8`: an array of bytes in a UTF-8 string |
-| `[N]T` |  An array with a *defined* static length `N` containing items of type `T` | `[4]u8`: the bytes in a single UTF-8 encoded codepoint
+| Type   | Description                                                                                                    | Example |
+|--------|----------------------------------------------------------------------------------------------------------------|---------|
+| `[]T`  | An array of variable length containing items of type `T`. The length of this array must be provided separately | `[]u8`: an array of bytes in a UTF-8 string |
+| `[N]T` |  An array with a *defined* static length `N` containing items of type `T`                                      | `[4]u8`: the bytes in a single UTF-8 encoded codepoint
 
 #### Structural types
 These types wrap a set of related data fields, usually so they can be reused in multiple places. The layout of a structural type will be described using the following method with the fictional stucture as an example:
 
 ### `EmployeeRecordTable`
-| Total Size | File Alignment |
-| :-------- | -------- |
-| 8 + ( [employee count] * [total size of `EmpRecord`] ) | 4 |
+| Total Size                                             | File Alignment |
+|:-------------------------------------------------------|----------------|
+| 8 + ( [employee count] * [total size of `EmpRecord`] ) | 4              |
 
-| | Offset | Type | Allowed Values | Description |
-| :--: | ----------: | -------- | :--------: | ---------- |
-| company tag | +0 | [`CompanyTag(u8)`](#companytag) | (see type) | A numeric tag indicating what company these employees work for |
-| employee count | +4 | [`u32`](#primitive-types)  | all | how many employees are stored in the employee records list in this table  |
-| record list | +8 | `[]EmpRecord` | (see type) | An array of employee records stored in sorted order according to their employee id |
+|                | Offset | Type                            | Allowed Values | Description |
+|:--------------:|-------:|---------------------------------|:--------------:|-------------|
+| Company Tag    | +0     | [`CompanyTag(u8)`](#companytag) | (see type)     | A numeric tag indicating what company these employees work for |
+| Employee Count | +4     | [`u32`](#primitive-types)       | all            | how many employees are stored in the employee records list in this table  |
+| Record List    | +8     | `[]EmpRecord`                   | (see type)     | An array of employee records stored in sorted order according to their employee id |
 
 ##### Notes:
 - The 'Offest' column describes the byte offset *from the start of the structure*, NOT from the start of the file (With the exception of the [`SimpleStrokeFont`](#simplestrokefont) structure, which IS the font file itself).
@@ -110,16 +110,16 @@ These types wrap a set of related data fields, usually so they can be reused in 
 These types are primitive numeric types with a finite list of static specification-defined allowed values. Only the *numeric value* is stored in the actual font file, but the specification provides human-readable meaning for the values to assist in code implementation (the 'Tag' column). Following from the fictional 'Employee' example above, enumeration types will be described in the following format:
 
 ### `CompanyTag`
-| Base Type | Size |
-| :-------: | ---- |
-|[`u8`](#primitive-types) | 1 |
+| Base Type               | Size |
+|:-----------------------:|------|
+|[`u8`](#primitive-types) | 1    |
 
-| Tag | Value | Info |
-| :--: | :---------: | ---- |
-| Goggle | 1 | search engine |
-| Amazing | 2 | web store |
-| WalkMart | 3 | department store | 
-| NewFlix | 4 | media streaming |
+| Tag      | Value | Info |
+|:--------:|:-----:|------|
+| Goggle   | 1     | search engine |
+| Amazing  | 2     | web store |
+| WalkMart | 3     | department store | 
+| NewFlix  | 4     | media streaming |
 
 #### Code Samples
 Throughout this document will be provided code samples that show how this file format can be used. They will usually be written in Zig, as that is the language I (the author) am more comfortable with, has generally all the same features as C, and I find it easier to read and translate into other languages for people that don't know either C or Zig. C examples *may* be provied as well on a case-by-case basis to provide clarity where a special consideration must be made for C.
@@ -186,15 +186,15 @@ The font file in its entirety (or the portion of a data buffer the file is locat
 |:-----------:|:--------------------------:|
 | (see below) | (recommended 4, see notes) |
 
-|               | Offset               | Type                                 | Allowed Value(s) | Description |
-|:-------------:|---------------------:|:------------------------------------:|:----------------:|:------------|
-| SSFF Tag      | +0                   | [`u32`](#primitive-types)            | 0x46465353       | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
-| Total Size    | +4                   | [`u32`](#primitive-types)            | any(u32)         | The *total* byte length of the entire font file |
-| Minor Verson  | +8                   | [`u16`](#primitive-types)            | 0                | The minor version of SSFF this file adheres to  |
-| Major Version | +10                  | [`u8`](#primitive-types)             | 1                | The major version of SSFF this file adheres to  |
-| Table Count   | +11                  | [`u8`](#primitive-types)             | any(u8)          | How many data tables the font contains. |
+|               | Offset               | Type                             | Allowed Value(s) | Description |
+|:-------------:|---------------------:|:--------------------------------:|:----------------:|:------------|
+| SSFF Tag      | +0                   | [`u32`](#primitive-types)        | 0x46465353       | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
+| Total Size    | +4                   | [`u32`](#primitive-types)        | any(u32)         | The *total* byte length of the entire font file |
+| Minor Verson  | +8                   | [`u16`](#primitive-types)        | 0                | The minor version of SSFF this file adheres to  |
+| Major Version | +10                  | [`u8`](#primitive-types)         | 1                | The major version of SSFF this file adheres to  |
+| Table Count   | +11                  | [`u8`](#primitive-types)         | any(u8)          | How many data tables the font contains. |
 | Table Offsets | +12                  | [`[]TableOffset`](#tableoffset)  | (see type)       | An array of Tag/Offest pairs used to locate the file location of a specific data table |
-| Table Data    | +(12+(TableCount*8)) | (various)                            | (n/a)            | The remainder of the font file data, organized into individual data tables |
+| Table Data    | +(12+(TableCount*8)) | (various)                        | (n/a)            | The remainder of the font file data, organized into individual data tables |
 
 This is the top-level structure that encompasses the entirety of the data for a distinct font.
 
@@ -272,6 +272,35 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 | First Char in Segment| +0     | [`u32`](#primitive-types)   | any(u32)         | The first codepoint in this contiguous segment of supported codepoints |
 | Last Char in Segment | +4     | [`u32`](#primitive-types)   | any(u32)         | The last codepoint in this contiguous segment of supported codepoints  |
 | Glyph Table Location | +8     | [`u32`](#primitive-types)   | any(u32)         | What index in the glyph table corresponds to the first char code in this segment |
+
+[Table of Contents](#table-of-contents)
+***
+
+### `VertexTable`
+| Total Size             | File Alignment |
+|:----------------------:|:--------------:|
+| 4 + (Vertex Count * 2) | 4              |
+
+|                 | Offset | Type                           | Allowed Value(s) | Description |
+|:---------------:|-------:|:-------------------------:|:----------------:| ----------- |
+| Vertex Count    | +0     | [`u32`](#primitive-types) | any(u32)         | How many unique vertices are used in this font |
+| Vertex List     | +4     | [`[]Vertex`](#vertex)     | (see type)       | An array of 2D Vertices with [`u8`](#primitive-types) for the dimension fields |
+
+This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`u8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
+
+It is entirely possible that a font author could define glyph shapes that fail to re-use common vertices, even where they ***could*** do so without affecting the actual visual result. For example, starting the bottom-left corner of the character 'A' at [0, 80] but starting the bottom-left corner of 'Ä' at [0, 78] and then using the glyph's baseline offsets to counteract the [0, -2] difference. With the exception of the 'umlauts', both characters could share all the same vertices for their main glyph shape if they were aligned in the [256, 256] grid similairly.
+
+It is the responsibility of the font author (or the software the font author is using to create their font) to align their glyph shapes properly to take advantage of this optimisation where possible. Even in the worst-case, the additional space taken up by vertices should not push an SSFF font into a files size comparable to an eqivalent TTF/OTF font.
+
+### `Vertex`
+| Total Size | File Alignment |
+|:----------:|:--------------:|
+| 2          | 2              |
+
+|            | Offset | Type                     | Allowed Value(s) | Description |
+|:----------:|-------:|:------------------------:|:----------------:| ----------- |
+| X Position | +0     | [`u8`](#primitive-types) | any(u8)          | Distance from the bottom-left corner of a square in the 'right' direction |
+| Y Position | +1     | [`u8`](#primitive-types) | any(u8)          | Distance from the bottom-left corner of a square in the 'up' direction  |
 
 [Table of Contents](#table-of-contents)
 ***
