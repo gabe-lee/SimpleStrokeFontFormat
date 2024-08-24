@@ -10,17 +10,20 @@ Version 0.1 technical specification for the SimpleStrokeFontFormat (.ssff)
   - [Number notation](#number-notation)
   - [Array types](#array-types)
   - [Structural types](#structural-types)
+  - [Enumeration types](#enumeration-types)
+  - [Code samples](#code-samples)
 - [File Format](#file-format)
   - [SimpleStrokeFont](#simplestrokefont)
     - [TableOffset](#tableoffset)
     - [TableTag](#tabletag)
-  - [CharMapTable]
+  - [CharMapTable](#charmaptable)
+    - [CharMapSegment](#charmapsegment)
 
 
 ## Motivation
 While attempting to re-write [stb_truetype](https://github.com/nothings/stb/blob/master/stb_truetype.h) in the Zig programming language, I came to realize how unnecessarily over-engineered TrueType and OpenType fonts were. Those formats aimed to be a 'universal' solution to rendering any possible shape for any possible writing system.
 
-The downsides are that over the years of their specifications they have tacked on more and more data tables to handle edge cases, different operating systems, and complex writing systems. Many of the data tables have multiple sub-formats as well, and provide alternate interpretations of the same data redundantly.
+The downsides are that over the years their specifications have tacked on more and more data tables to handle edge cases, different operating systems, and complex writing systems. Many of the data tables have multiple sub-formats as well, and provide alternate interpretations of the same data redundantly.
 
 This means that code supporting these formats needs to gracefully handle any/all possible configurations of the internal data, or otherwise communicate that they only support a subset of those files.
 
@@ -32,7 +35,7 @@ However for a significant portion of real-world use cases this level of 'perfect
 - Store character shapes in a compact format with a limited range of expresion, but still plenty enough to allow for moderate stylistic creativity.
 - Store character shapes in a state that is easy for the CPU/GPU to process and rasterize with minimal additional calculations.
 - Support horizontal and vertical text layouts in both forward and reverse directions.
-- Support simple A/B kerning given two adjacent unicode characters
+- Support class-grouped kerning given two adjacent unicode characters
 - Support fonts with both small and large character sets efficiently
 - Support bold and italic font styles in the same file with minimal additional data
 - Store data at correct byte alignments (relative to file start) in Little Endian format
@@ -47,6 +50,9 @@ However for a significant portion of real-world use cases this level of 'perfect
 - Allow *complete* creative freedom when designing font glyphs/chars
 - Support alternate glyph shapes for very small font sizes
 - Support full-color emojis/icons
+- Provide the 'best' compression possible for a given font
+  - Instead, the goal is to reduce the data required to store the font, rather than finding clever ways to compress/encode it.
+  - A simple layout allowing simple program code to access the data should be a first-class feature, not an afterthought
 
 ## Terminology and Conventions
 #### Basic terms
@@ -115,6 +121,60 @@ These types are primitive numeric types with a finite list of static specificati
 | WalkMart | 3 | department store | 
 | NewFlix | 4 | media streaming |
 
+#### Code Samples
+Throughout this document will be provided code samples that show how this file format can be used. They will usually be written in Zig, as that is the language I (the author) am more comfortable with, has generally all the same features as C, and I find it easier to read and translate into other languages for people that don't know either C or Zig. C examples *may* be provied as well on a case-by-case basis to provide clarity where a special consideration must be made for C.
+
+Below is an identical code sample in both Zig and C for context.
+##### Zig
+```zig
+// import the standard library using the name 'std'
+const std = @include('std');
+
+// A structural type named 'Employee'
+const Employee = struct {
+  // A field called 'first_name' that holds 20 bytes(u8)
+  first_name: [20]u8,
+  // A field called 'last_name' that holds 20 bytes(u8)
+  last_name: [20]u8,
+  // A field called 'salary' that holds a floating-point decimal
+  salary: f32,
+};
+
+// A function that takes an employee, prints its data, and returns
+// whether or not the employee makes at least $100000 a year (true/false)
+fn print_employee(Employee employee) bool {
+  // print employee data to standard out
+  std.debug.print("Name = {s} {s}\nSalary = {f}", .{employee.first_name, employee.last_name, employee.salary});
+  // return whther employee makes at least $100000 a year
+  return employee.salary >= 100000.0;
+}
+```
+##### C
+
+```c
+// Use the C Standard Input/Output library
+#include <stdio.h>
+
+// A structural type named 'Employee'
+struct Employee {
+  // A field called 'first_name' that holds 20 bytes(chars)
+  char first_name[20];
+  // A field called 'last_name' that holds 20 bytes(chars)
+  char last_name[20];
+  // A field called 'salary' that holds a floating-point decimal
+  float salary;
+}
+
+// A function that takes an employee, prints its data, and returns
+// whether or not the employee makes at least $100000 a year (true/false)
+bool print_employee(Employee employee) {
+  // print employee data to standard out
+  printf("Name = %s %s\nSalary = %f", employee.first_name, employee.last_name, employee.salary);
+  // return whther employee makes at least $100000 a year
+  return employee.salary >= 100000.0;
+}
+```
+
 [Table of Contents](#table-of-contents)
 ***
 ***
@@ -144,9 +204,6 @@ The "Table Data" section of the file should be treated as a byte array (`[]u8`) 
 
 It is recommended to load the font file into a buffer (or a location within a buffer) that is aligned to a byte alignment of 4. The SSFF specification requires that primitive types are always located at a correct byte alignment relative to the begining of the font file, and the largest alignment of any type used in the specification is 4. This allows the consuming code to take advantage of an optimization where a numeric value can be directly interperted from the data buffer by simply casting its memory pointer/offset as a pointer/reference to the matching type in the language (dependant on consuming language capabilities, languages that do not support pointer casts can still assemble the numeric value by shifting each byte into the type manually, and most languages include standard functions to do exactly that)
 
-[Table of Contents](#table-of-contents)
-***
-
 ### `TableOffset`
 | Total Size | File Alignment |
 |:----------:|:--------------:|
@@ -160,9 +217,6 @@ It is recommended to load the font file into a buffer (or a location within a bu
 Each TableOffset is a tag/offset pair that tells consumer code where to find a specific data table.
 
 Required table offsets are guaranteed[*](#terminology-and-conventions) to exist and be in sorted order in a properly formed font file, allowing consumer code to 'hard-code' the location of the `TableOffset` relative to the file start for all required tables as long as the font file is known to be correctly formed (see [`TableTag`](#tabletag) for details).
-
-[Table of Contents](#table-of-contents)
-***
 
 ### `TableTag`
 | Base Type               | Size | File Alignment |
@@ -180,7 +234,7 @@ Required table offsets are guaranteed[*](#terminology-and-conventions) to exist 
 | Ligatures| 6     | No       | [`LigatureTable`](#ligaturetable)| ---   |
 | Lang     | 7     | No       | [`LangTable`](#langtable)        | ---   |
 
-An enumeration type that defines which numeric value of the "Table Tag" field in [`TableOffset`](#tableoffset) referst to which font data table. Also included are the guaranteed[*](#terminology-and-conventions) offsets relative to font file start where the [`TableOffset`](#tableoffset) of required tables can be found (in a properly formatted font file)
+An enumeration type that defines which numeric value of the "Table Tag" field in [`TableOffset`](#tableoffset) refers to which font data table. Also included are the guaranteed[*](#terminology-and-conventions) offsets relative to font file start where the [`TableOffset`](#tableoffset) of required tables can be found (in a properly formatted font file)
 
 As a note, TTF and OTF use table tags based on human-readable ascii strings. The SSFF has been designed to offer maximal opportunities for code optimizations, in this case optimizing for the common use of a [switch-statement](https://en.wikipedia.org/wiki/Switch_statement#Compilation) to identify table tags. Although human-readable strings may be an ergonomic shortcut for developers, it imposes a slight disadvantage for compilers. 
 
@@ -188,20 +242,36 @@ As a note, TTF and OTF use table tags based on human-readable ascii strings. The
 ***
 
 ### `CharMapTable`
+| Total Size                | File Alignment |
+|:-------------------------:|:--------------:|
+| 16 + (Segment Count * 12) | 4              |
+
+|               | Offset | Type                                 | Allowed Value(s) | Description |
+|:-------------:|-------:|:------------------------------------:|:----------------:| ----------- |
+| Char Count    | +0     | [`u32`](#primitive-types)            | any(u32)         | How many total unicode codepoints this font contains |
+| Smallest Char | +4     | [`u32`](#primitive-types)            | any(u32)         | The smallest unicode codepoint this font contains |
+| Largest Char  | +8     | [`u32`](#primitive-types)            | any(u32)         | The largest unicode codepoint this font contains |
+| Segment Count | +12    | [`u32`](#primitive-types)            | any(u32)         | The number of contiguous segments of supported codepoints in the Character Map |
+| Segment List  | +16    | [`[]CharMapSegment`](#charmapsegment)| (see type)       | A list of structs that each describe a segment of contiguous unicode codepoints supported by this font, and an index that shows where the segment of codepoints begins in the [`GlyphTable`](#glyphtable) glyph list |
+
+This table is essentially the 'key' to accessing the rest of the data in the font. It maps a set of supported [unicode codepoints](https://en.wikipedia.org/wiki/Unicode#Codespace_and_code_points) to the glyph that needs to be drawn to represent them. Because the set of supported codepoints may not be entirely contiguous (meaning there are 'holes' in the codepoint covereage), each *contiguous* range of supported codepoints is given its own [`CharMapSegment`](#charmapsegment) that describes the range of codepoints the segment covers, and what index in the [`GlyphTable`](#glyphtable) refers to the first char code in that segment.
+
+All contiguous codepoints within a segment are guaranteed[*](#terminology-and-conventions) to be contiguous glyph indexes starting from the first. For example, if CharSegment [1000 -> 1500] starts at Glyph Index 400, then glyphs [400, 401, 402, 403, ... 900] represent codepoints [1000, 1001, 1002, 1003, ... 1500].
+
+The SSFF format adheres to the convention that all codepoints are **unicode** codepoints, and font authors should make sure the codepoints they support have glyphs that match the semantic expectations of those codepoints. Strictly speaking, however, this specification makes no checks for codepoint correctness, and font authors may add extra codepoints outside the range of what unicode specifies for things unicode doesn't cover, like custom icons.
+
+Glyph Index 0 is reserved for a glyph representing a codepoint that is not supported by the font, and generally speaking the correct action to take if the user requests such a glyph is to return glyph index 0 instead, but that is up to the specific code implementation in question.
+
+### `CharMapSegment`
 | Total Size | File Alignment |
 |:----------:|:--------------:|
-| 8          | 4              |
+| 12          | 4             |
 
-|                 | Offset | Type                        | Allowed Value(s) | Description |
-|:---------------:|-------:|:---------------------------:|:----------------:| ----------- |
-| Char Count      | +0     | [`TableTag(u8)`](#tabletag) | (see type)       | How many character codes this font contains |
-| Smallest Char   | +4     | [`u32`](#primitive-types)   | any(u32)         | The smallest character code this font contains |
-| Largest Char    | +8     | [`u32`](#primitive-types)   | any(u32)         | The largest character code this font contains |
-| Contiguous Count| +12    | [`u32`](#primitive-types)   | any(u32)         | The number of contiguous segments of supported character codes in this |
-
-Each TableOffset is a tag/offset pair that tells consumer code where to find a specific data table.
-
-Required table offsets are guaranteed[*](#terminology-and-conventions) to exist and be in sorted order in a properly formed font file, allowing consumer code to 'hard-code' the location of the `TableOffset` relative to the file start for all required tables as long as the font file is known to be correctly formed (see [`TableTag`](#tabletag) for details).
+|                      | Offset | Type                        | Allowed Value(s) | Description |
+|:--------------------:|-------:|:---------------------------:|:----------------:| ----------- |
+| First Char in Segment| +0     | [`u32`](#primitive-types)   | any(u32)         | The first codepoint in this contiguous segment of supported codepoints |
+| Last Char in Segment | +4     | [`u32`](#primitive-types)   | any(u32)         | The last codepoint in this contiguous segment of supported codepoints  |
+| Glyph Table Location | +8     | [`u32`](#primitive-types)   | any(u32)         | What index in the glyph table corresponds to the first char code in this segment |
 
 [Table of Contents](#table-of-contents)
 ***
