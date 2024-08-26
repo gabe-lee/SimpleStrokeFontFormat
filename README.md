@@ -276,22 +276,49 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 ***
 
 ### `ShapeTable`
-| Total Size             | File Alignment |
-|:----------------------:|:--------------:|
-| 4 + (Vertex Count * 2) | 4              |
+| Total Size                                  | File Alignment |
+|:-------------------------------------------:|:--------------:|
+| +8 + (Shape Count * 6) + (Vertex Count * 2) | 4              |
 
-|                  | Offset                 | Type                       | Allowed Value(s) | Description |
-|:----------------:|-----------------------:|:--------------------------:|:----------------:| ----------- |
-| Shape Count      | +0                     | [`u32`](#primitive-types)  | any(u32)         | How many unique shapes are used in this font (length of Shape Start List and Shape Type List) |
-| Shape Start List| +4                     | [`[]u32`](#primitive-types)| any(u32)         | A list that ties a shape index to its start position in the Shape Data List |
-| Shape Type List| +4                     | [`[]u32`](#primitive-types)| any(u32)         | A list that ties a stoke index to its start position in the Stroke Data List |
-| Stroke Data List | +4 + (Stroke Count * 4)| [`[]u8`](#primitive-types)| any(u32)         | A list that ties a stoke index to its start position in the Stroke Data List |
+|                   | Offset                 | Type                       | Allowed Value(s) | Description |
+|:-----------------:|-----------------------:|:--------------------------:|:----------------:| ----------- |
+| Shape Count       | +0                     | [`u32`](#primitive-types)  | any(u32)         | How many shapes are used in this font (length of Shape Start List and Shape Type List) |
+| Vertex Count      | +4                     | [`u32`](#primitive-types)  | any(u32)         | How many vertices are used in this font (length of Shape Vertex List) |
+| Shape Start List  | +8                     | [`[]u32`](#primitive-types)| any(u32)         | A list that ties a shape index to its start position in the Stroke Vertex List |
+| Shape Type List   | +8 + (Stroke Count * 4)| [`[]ShapeType`](#shapetype)| (see type)       | A list that describes the shape type for a given |
+| Shape Vertex List | +8 + (Stroke Count * 6)| [`[]Vertex`](#vertex)      | (see type)       | A list that holds all shape vertices |
+
+This table describes a list of individual shapes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same shape, reducing the overall memory footprint by letting glyphs simply list what shapes they need and where.
+
+Every shape has a 
 
 This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`u8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
 
 It is entirely possible that a font author could define glyph shapes that fail to re-use common vertices, even where they ***could*** do so without affecting the actual visual result. For example, starting the bottom-left corner of the character 'A' at [0, 80] but starting the bottom-left corner of 'Ä' at [0, 78] and then using the glyph's baseline offsets to counteract the [0, -2] difference. With the exception of the 'umlauts', both characters could share all the same vertices for their main glyph shape if they were aligned in the [256, 256] grid similairly.
 
 It is the responsibility of the font author (or the software the font author is using to create their font) to align their glyph shapes properly to take advantage of this optimisation where possible. Even in the worst-case, the additional space taken up by vertices should not push an SSFF font into a files size comparable to an eqivalent TTF/OTF font.
+
+### `EdgeType`
+| Base Type               | Size | File Alignment |
+|:-----------------------:|------|----------------|
+|[`u8`](#primitive-types) | 1    | 1              |
+
+| Tag                | Value | Vertices Used | Description |
+|:-------------------|:-----:|:-------------:|:------------|
+| Line               | 0     | 2             | Line using 2 new vertices as the [start, end] |
+| LineContinue       | 1     | 1             | Line using 1 previous vertex as [start] and 1 new vertex as [end] |
+| LineCloseLoop      | 2     | 0             | Line using 1 previous vertex as [start] and the first vertex in set as [end] |
+| QuadBeizer         | 3     | 3             | Quadratic beizer using 3 new vertices as [start, control, end] |
+| QuadBeizerContinue | 4     | 2             | Quadratic beizer using 1 previous vertex as [start], and 2 new vertices as [control, end] |
+| QuadBeizerCloseLoop| 5     | 1             | Quadratic beizer using 1 previous vertex as [start], 1 new vertex as [control], and the first vertex in set as [end] |
+| CubeBeizer         | 6     | 4             | Cubic beizer using 4 new vertices as [start, control 1, control 2, end] |
+| CubeBeizerContinue | 7     | 3             | Cubic beizer using 1 previous vertex as [start], and 3 new vertices as [control 1, control 2, end] |
+| CubeBeizerCloseLoop| 8     | 2             | Cubic beizer using 1 previous vertex as [start], 2 new vertices as [control 1, control 2], and the first vertex in set as [end] |
+| CircleRadius       | 9     | 1             | The radius of a circle, using 1 vertex as [[Radius, (unused)]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
+| ElipseRadius       | 10    | 1             | The radii of an axis-aligned elipse, using 1 vertex as [[Radius X, Radius Y]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
+| CircleRingRadius   | 11    | 1             | The radii of a circular ring, using 1 vertex [[Radius Outer, Radius Inner]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
+| ElipseRingRadius   | 12    | 2             | The radii of an axis-aligned eliptic ring, using 2 vertices as [[Radius Outer X, Radius Inner X], [Radius Outer Y, Radius Inner Y]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
+| Point              | 13    | 1             | A singular point that requires no linear interpolation (all interpolated points would just equal the original point) |
 
 ### `Vertex`
 | Total Size | File Alignment |
