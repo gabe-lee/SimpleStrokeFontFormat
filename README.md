@@ -1,5 +1,5 @@
-# SimpleShapeFontFormat
-Version 0.1 technical specification for the SimpleShapeFontFormat (.ssff)
+# SimpleStrokeFontFormat
+Version 0.1 technical specification for the SimpleStrokeFontFormat (.ssff)
 
 ## Table of Contents
 - [Motivation](#motivation)
@@ -13,7 +13,7 @@ Version 0.1 technical specification for the SimpleShapeFontFormat (.ssff)
   - [Enumeration types](#enumeration-types)
   - [Code samples](#code-samples)
 - [File Format](#file-format)
-  - [SimpleShapeFont](#simpleshapefont)
+  - [SimpleStrokeFont](#simplestrokefont)
     - [TableOffset](#tableoffset)
     - [TableTag](#tabletag)
   - [CharMapTable](#charmaptable)
@@ -58,7 +58,7 @@ However for a significant portion of real-world use cases this level of 'perfect
 #### Basic terms
 | Term          | Explaination |
 |---------------| ------------ |
-| SSFF, .ssff   | Shorthand for 'SimpleShapeFontFormat' and its coresponding file extension|
+| SSFF, .ssff   | Shorthand for 'SimpleStrokeFontFormat' and its coresponding file extension|
 | TTF, .ttf     | Shorthand for 'TrueType Font' and its coresponding file extension |
 | OTF, .otf     | Shorthand for 'OpenType Font' and its coresponding file extension |
 | Little Endian | Individual bytes in a numeric value are stored smallest-byte-first when reading from a buffer. For example, the hexidecimal number `0xAABBCCDD` would be  stored as `[0xDD, 0xCC, 0xBB, 0xAA]` |
@@ -103,7 +103,7 @@ These types wrap a set of related data fields, usually so they can be reused in 
 | Record List    | +8     | `[]EmpRecord`                   | (see type)     | An array of employee records stored in sorted order according to their employee id |
 
 ##### Notes:
-- The 'Offest' column describes the byte offset *from the start of the structure*, NOT from the start of the file (With the exception of the [`SimpleShapeFont`](#simpleshapefont) structure, which IS the font file itself).
+- The 'Offest' column describes the byte offset *from the start of the structure*, NOT from the start of the file (With the exception of the [`SimpleStrokeFont`](#simplestrokefont) structure, which IS the font file itself).
 - 'File Alignment' refers to the byte alignment the structure is guaranteed to be stored at *relative to file start*. This means that as long as you load the file data into a buffer that is aligned to this alignment or greater, a pointer to the structure's byte offset can be directly interpreted as a pointer to a matching data type in the programing language of your choice (dependant on programming language capabilities)
 
 #### Enumeration types
@@ -181,7 +181,7 @@ bool print_employee(Employee employee) {
 
 # File Format
 The font file in its entirety (or the portion of a data buffer the file is located at) is represented with the following structure:
-### `SimpleShapeFont`
+### `SimpleStrokeFont`
 | Total Size  | File Alignment             |
 |:-----------:|:--------------------------:|
 | (see below) | (recommended 4, see notes) |
@@ -226,7 +226,7 @@ Required table offsets are guaranteed[*](#terminology-and-conventions) to exist 
 | Tag      | Value | Required | Table Indicated                  | Guaranteed[*](#terminology-and-conventions) [`TableOffset`](#tableoffset) location from File Start|
 |:--------:|:-----:|:--------:|:--------------------------------:|:-----:|
 | CharMap  | 0     | Yes      | [`CharMapTable`](#charmaptable)  | +12   |
-| Shape    | 1     | Yes      | [`ShapeTable`](#shapetable)      | +20   |
+| Stroke   | 1     | Yes      | [`StrokeTable`](#stroketable)    | +20   |
 | Glyph    | 2     | Yes      | [`GlyphTable`](#glyphtable)      | +28   |
 | Metrics  | 3     | Yes      | [`MetricsTable`](#metricstable)  | +36   |
 | Kerning  | 4     | No       | [`KerningTable`](#kerningtable)  | ---   |
@@ -275,22 +275,21 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 [Table of Contents](#table-of-contents)
 ***
 
-### `ShapeTable`
+### `StrokeTable`
 | Total Size                                  | File Alignment |
 |:-------------------------------------------:|:--------------:|
-| +8 + (Shape Count * 6) + (Vertex Count * 2) | 4              |
+| +8 + (Stroke Count * 4) + (Stroke Data Len) | 4              |
 
-|                   | Offset                 | Type                       | Allowed Value(s) | Description |
-|:-----------------:|-----------------------:|:--------------------------:|:----------------:| ----------- |
-| Shape Count       | +0                     | [`u32`](#primitive-types)  | any(u32)         | How many shapes are used in this font (length of Shape Start List and Shape Type List) |
-| Vertex Count      | +4                     | [`u32`](#primitive-types)  | any(u32)         | How many vertices are used in this font (length of Shape Vertex List) |
-| Shape Start List  | +8                     | [`[]u32`](#primitive-types)| any(u32)         | A list that ties a shape index to its start position in the Stroke Vertex List |
-| Shape Type List   | +8 + (Stroke Count * 4)| [`[]ShapeType`](#shapetype)| (see type)       | A list that describes the shape type for a given |
-| Shape Vertex List | +8 + (Stroke Count * 6)| [`[]Vertex`](#vertex)      | (see type)       | A list that holds all shape vertices |
+|                   | Offset                 | Type                        | Allowed Value(s) | Description |
+|:-----------------:|-----------------------:|:---------------------------:|:----------------:| ----------- |
+| Stroke Count      | +0                     | [`u32`](#primitive-types)   | any(u32)         | How many strokes are used in this font (length of Stroke Start List) |
+| Stroke Data Len   | +4                     | [`u32`](#primitive-types)   | any(u32)         | Byte length of Stroke Data List |
+| Stroke Start List | +8                     | [`[]u32`](#primitive-types) | any(u32)         | A list that ties a stroke index to its start position in the Stroke Data List |
+| Stroke Data Buffer| +8 + (Stroke Count * 4)| [`[]Stroke`](#stroke)       | (see type)       | A data buffer containing the data describing each stroke. **NOTE** that the [`[]Stroke`](#stroke) structural type does not have a static size, and the Stroke Data Buffer can only be indexed using the corresponding byte start in Stroke Start List |
 
-This table describes a list of individual shapes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same shape, reducing the overall memory footprint by letting glyphs simply list what shapes they need and where.
+This table describes a list of individual strokes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same strokes (where possible and sensible), reducing the overall memory footprint by letting glyphs simply list what strokes they need and where.
 
-Every shape has a 
+SSFF does not support complex shapes for glyphs like most other font formats. Instead the specid
 
 This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`u8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
 
