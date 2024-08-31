@@ -8,6 +8,8 @@ Version 0.1 technical specification for the SimpleStrokeFontFormat (.ssff)
 - [Terminology and Conventions](#terminology-and-conventions)
   - [Basic terms](#basic-terms)
   - [Number notation](#number-notation)
+  - [Primitive types](#primitive-types)
+  - [Semantic types](#semantic-types)
   - [Array types](#array-types)
   - [Structural types](#structural-types)
   - [Enumeration types](#enumeration-types)
@@ -72,21 +74,26 @@ However for a significant portion of real-world use cases this level of 'perfect
 | Binary     | 0b00101010 | 42 |
 
 #### Primitive types
-| Type   | Size (Bytes) | Min Value   | Max Value | Byte Order |
-|:-------|:------------:|------------:|----------:|------------|
-| `bool` | 1            | 0 (false)   | 1 (true)  | N/A |
-| `u8`   | 1            | 0           | 255       | N/A |
-| `i8`   | 1            | -128        | 127       | N/A |
-| `u16`  | 2            | 0           | 65535     | Little Endian |
-| `i16`  | 2            | -32768      | 32767     | Little Endian |
-| `u32`  | 4            | 0           | 4294967295| Little Endian |
-| `i32`  | 4            | -2147483648 | 2147483647| Little Endian |
+| Type    | Size (Bytes) | Min Value   | Max Value | Byte Order |
+|:--------|:------------:|------------:|----------:|------------|
+| `bool`  | 1            | 0 (false)   | 1 (true)  | N/A |
+| `uint8` | 1            | 0           | 255       | N/A |
+| `int8`  | 1            | -128        | 127       | N/A |
+| `uint16`| 2            | 0           | 65535     | Little Endian |
+| `int16` | 2            | -32768      | 32767     | Little Endian |
+| `uint32`| 4            | 0           | 4294967295| Little Endian |
+| `int32` | 4            | -2147483648 | 2147483647| Little Endian |
+
+#### Semantic types
+| Type     | Base Type | Semantics   |
+|:---------|:---------:|:------------|
+| `unorm8` | `uint8`   | A 1-byte integer type that represents a floating point value, where [0 -> 255] == [0.0 -> 1.0]. The consuming code should convert this to a float, for example: `var real_val = int_to_float(unorm8_val) / 255.0` |
 
 #### Array types
 | Type   | Description                                                                                                    | Example |
 |--------|----------------------------------------------------------------------------------------------------------------|---------|
-| `[]T`  | An array of variable length containing items of type `T`. The length of this array must be provided separately | `[]u8`: an array of bytes in a UTF-8 string |
-| `[N]T` |  An array with a *defined* static length `N` containing items of type `T`                                      | `[4]u8`: the bytes in a single UTF-8 encoded codepoint
+| `[]T`  | An array of variable length containing items of type `T`. The length of this array must be provided separately | `[]uint8`: an array of bytes in a UTF-8 string |
+| `[N]T` |  An array with a *defined* static length `N` containing items of type `T`                                      | `[4]uint8`: the bytes in a single UTF-8 encoded codepoint
 
 #### Structural types
 These types wrap a set of related data fields, usually so they can be reused in multiple places. The layout of a structural type will be described using the following method with the fictional stucture as an example:
@@ -98,8 +105,8 @@ These types wrap a set of related data fields, usually so they can be reused in 
 
 |                | Offset | Type                            | Allowed Values | Description |
 |:--------------:|-------:|---------------------------------|:--------------:|-------------|
-| Company Tag    | +0     | [`CompanyTag(u8)`](#companytag) | (see type)     | A numeric tag indicating what company these employees work for |
-| Employee Count | +4     | [`u32`](#primitive-types)       | all            | how many employees are stored in the employee records list in this table  |
+| Company Tag    | +0     | [`CompanyTag(uint8)`](#companytag) | (see type)     | A numeric tag indicating what company these employees work for |
+| Employee Count | +4     | [`uint32`](#primitive-types)       | all            | how many employees are stored in the employee records list in this table  |
 | Record List    | +8     | `[]EmpRecord`                   | (see type)     | An array of employee records stored in sorted order according to their employee id |
 
 ##### Notes:
@@ -112,7 +119,7 @@ These types are primitive numeric types with a finite list of static specificati
 ### `CompanyTag`
 | Base Type               | Size |
 |:-----------------------:|------|
-|[`u8`](#primitive-types) | 1    |
+|[`uint8`](#primitive-types) | 1    |
 
 | Tag      | Value | Info |
 |:--------:|:-----:|------|
@@ -122,57 +129,42 @@ These types are primitive numeric types with a finite list of static specificati
 | NewFlix  | 4     | media streaming |
 
 #### Code Samples
-Throughout this document will be provided code samples that show how this file format can be used. They will usually be written in Zig, as that is the language I (the author) am more comfortable with, has generally all the same features as C, and I find it easier to read and translate into other languages for people that don't know either C or Zig. C examples *may* be provied as well on a case-by-case basis to provide clarity where a special consideration must be made for C.
+Throughout this document will be provided code samples that show how this file format can be used. The tradition is to provide code in ANSI C, however C does not have many of the modern sensibilities that modern languages tend to follow for readability. In order to provide maximum understandability for the widest range of readers, code will be given in [Golang](https://github.com/a8m/golang-cheat-sheet), which has a highly readable syntax. Code samples will avoid using syntax shortcuts and Go-specific types, using onle the bare-bones syntax for maximum transferability to other languages.
 
-Below is an identical code sample in both Zig and C for context.
-##### Zig
-```zig
-// import the standard library using the name 'std'
-const std = @include('std');
+```go
+// Import the standard 'fmt' library
+import "fmt"
+
+// A constant value that holds a 4-byte integer and always equals 2024
+const year uint32 = 2024
+
+// A changeable value that holds a 2-byte integer with an initial value of 102
+var day uint16 = 102
 
 // A structural type named 'Employee'
-const Employee = struct {
-  // A field called 'first_name' that holds 20 bytes(u8)
-  first_name: [20]u8,
-  // A field called 'last_name' that holds 20 bytes(u8)
-  last_name: [20]u8,
-  // A field called 'salary' that holds a floating-point decimal
-  salary: f32,
+type Employee struct {
+  first_name: [20]uint8 // A field called 'first_name' that holds 20 bytes(uint8)
+  last_name: [20]uint8  // A field called 'last_name' that holds 20 bytes(uint8)
+  salary: float32       // A field called 'salary' that holds a 4-byte floating-point decimal
 };
 
 // A function that takes an employee, prints its data, and returns
 // whether or not the employee makes at least $100000 a year (true/false)
-fn print_employee(Employee employee) bool {
+func print_employee(employee Employee) bool {
   // print employee data to standard out
-  std.debug.print("Name = {s} {s}\nSalary = {f}", .{employee.first_name, employee.last_name, employee.salary});
+  fmt.Println("Name = ", employee.first_name, " ", employee.last_name, "\nSalary = ", employee.salary);
   // return whther employee makes at least $100000 a year
   return employee.salary >= 100000.0;
 }
-```
-##### C
 
-```c
-// Use the C Standard Input/Output library
-#include <stdio.h>
-
-// A structural type named 'Employee'
-struct Employee {
-  // A field called 'first_name' that holds 20 bytes(chars)
-  char first_name[20];
-  // A field called 'last_name' that holds 20 bytes(chars)
-  char last_name[20];
-  // A field called 'salary' that holds a floating-point decimal
-  float salary;
+// Defining an instance of an Employee type
+const bob = Employee{
+  first_name: "Robert",
+  last_name: "Robertson",
+  salary: 68500.00,
 }
 
-// A function that takes an employee, prints its data, and returns
-// whether or not the employee makes at least $100000 a year (true/false)
-bool print_employee(Employee employee) {
-  // print employee data to standard out
-  printf("Name = %s %s\nSalary = %f", employee.first_name, employee.last_name, employee.salary);
-  // return whther employee makes at least $100000 a year
-  return employee.salary >= 100000.0;
-}
+//TODO
 ```
 
 [Table of Contents](#table-of-contents)
@@ -188,11 +180,11 @@ The font file in its entirety (or the portion of a data buffer the file is locat
 
 |               | Offset               | Type                             | Allowed Value(s) | Description |
 |:-------------:|---------------------:|:--------------------------------:|:----------------:|:------------|
-| SSFF Tag      | +0                   | [`u32`](#primitive-types)        | 0x46465353       | The UTF-8 string "SSFF" interpreted as a Little Endian u32 |
-| Total Size    | +4                   | [`u32`](#primitive-types)        | any(u32)         | The *total* byte length of the entire font file |
-| Minor Verson  | +8                   | [`u16`](#primitive-types)        | 0                | The minor version of SSFF this file adheres to  |
-| Major Version | +10                  | [`u8`](#primitive-types)         | 1                | The major version of SSFF this file adheres to  |
-| Table Count   | +11                  | [`u8`](#primitive-types)         | any(u8)          | How many data tables the font contains. |
+| SSFF Tag      | +0                   | [`uint32`](#primitive-types)        | 0x46465353       | The UTF-8 string "SSFF" interpreted as a Little Endian uint32 |
+| Total Size    | +4                   | [`uint32`](#primitive-types)        | any(uint32)         | The *total* byte length of the entire font file |
+| Minor Verson  | +8                   | [`uint16`](#primitive-types)        | 0                | The minor version of SSFF this file adheres to  |
+| Major Version | +10                  | [`uint8`](#primitive-types)         | 1                | The major version of SSFF this file adheres to  |
+| Table Count   | +11                  | [`uint8`](#primitive-types)         | any(uint8)          | How many data tables the font contains. |
 | Table Offsets | +12                  | [`[]TableOffset`](#tableoffset)  | (see type)       | An array of Tag/Offest pairs used to locate the file location of a specific data table |
 | Table Data    | +(12+(TableCount*8)) | (various)                        | (n/a)            | The remainder of the font file data, organized into individual data tables |
 
@@ -200,7 +192,7 @@ This is the top-level structure that encompasses the entirety of the data for a 
 
 Each entry in the [`[]TableOffset`](#tableoffset) array MUST be in sorted order according to the numeric value of its [`TableTag`](#tabletag), with all required tables coming before all optional tables. And in fact, since required tables are *required* to exist and always in sorted order, consumer code has the option to hard-code file offsets to more quickly locate data offsets of required tables, as long as the font file is known to be properly formatted according to this specificiation (see [`TableTag`](#tabletag) for details).
 
-The "Table Data" section of the file should be treated as a byte array (`[]u8`) with an unknown/undefined data layout until an individual data table is located within it using the [`[]TableOffset`](#tableoffset) array
+The "Table Data" section of the file should be treated as a byte array (`[]uint8`) with an unknown/undefined data layout until an individual data table is located within it using the [`[]TableOffset`](#tableoffset) array
 
 It is recommended to load the font file into a buffer (or a location within a buffer) that is aligned to a byte alignment of 4. The SSFF specification requires that primitive types are always located at a correct byte alignment relative to the begining of the font file, and the largest alignment of any type used in the specification is 4. This allows the consuming code to take advantage of an optimization where a numeric value can be directly interperted from the data buffer by simply casting its memory pointer/offset as a pointer/reference to the matching type in the language (dependant on consuming language capabilities, languages that do not support pointer casts can still assemble the numeric value by shifting each byte into the type manually, and most languages include standard functions to do exactly that)
 
@@ -211,8 +203,8 @@ It is recommended to load the font file into a buffer (or a location within a bu
 
 |                | Offset | Type                        | Allowed Value(s) | Description |
 |:--------------:|-------:|:---------------------------:|:----------------:| ----------- |
-| Table Tag      | +0     | [`TableTag(u8)`](#tabletag) | (see type)       | A tag indicating which table is located at the following file location |
-| Table Location | +4     | [`u32`](#primitive-types)   | any(u32)         | Table location (byte offset) relative to the *start of the font file* |
+| Table Tag      | +0     | [`TableTag(uint8)`](#tabletag) | (see type)       | A tag indicating which table is located at the following file location |
+| Table Location | +4     | [`uint32`](#primitive-types)   | any(uint32)         | Table location (byte offset) relative to the *start of the font file* |
 
 Each TableOffset is a tag/offset pair that tells consumer code where to find a specific data table.
 
@@ -221,7 +213,7 @@ Required table offsets are guaranteed[*](#terminology-and-conventions) to exist 
 ### `TableTag`
 | Base Type               | Size | File Alignment |
 |:-----------------------:|------|----------------|
-|[`u8`](#primitive-types) | 1    | 4              |
+|[`uint8`](#primitive-types) | 1    | 4              |
 
 | Tag      | Value | Required | Table Indicated                  | Guaranteed[*](#terminology-and-conventions) [`TableOffset`](#tableoffset) location from File Start|
 |:--------:|:-----:|:--------:|:--------------------------------:|:-----:|
@@ -247,10 +239,10 @@ As a note, TTF and OTF use table tags based on human-readable ascii strings. The
 
 |               | Offset | Type                                 | Allowed Value(s) | Description |
 |:-------------:|-------:|:------------------------------------:|:----------------:| ----------- |
-| Char Count    | +0     | [`u32`](#primitive-types)            | any(u32)         | How many total unicode codepoints this font contains |
-| Smallest Char | +4     | [`u32`](#primitive-types)            | any(u32)         | The smallest unicode codepoint this font contains |
-| Largest Char  | +8     | [`u32`](#primitive-types)            | any(u32)         | The largest unicode codepoint this font contains |
-| Segment Count | +12    | [`u32`](#primitive-types)            | any(u32)         | The number of contiguous segments of supported codepoints in the Character Map |
+| Char Count    | +0     | [`uint32`](#primitive-types)            | any(uint32)         | How many total unicode codepoints this font contains |
+| Smallest Char | +4     | [`uint32`](#primitive-types)            | any(uint32)         | The smallest unicode codepoint this font contains |
+| Largest Char  | +8     | [`uint32`](#primitive-types)            | any(uint32)         | The largest unicode codepoint this font contains |
+| Segment Count | +12    | [`uint32`](#primitive-types)            | any(uint32)         | The number of contiguous segments of supported codepoints in the Character Map |
 | Segment List  | +16    | [`[]CharMapSegment`](#charmapsegment)| (see type)       | A list of structs that each describe a segment of contiguous unicode codepoints supported by this font, and an index that shows where the segment of codepoints begins in the [`GlyphTable`](#glyphtable) glyph list |
 
 This table is essentially the 'key' to accessing the rest of the data in the font. It maps a set of supported [unicode codepoints](https://en.wikipedia.org/wiki/Unicode#Codespace_and_code_points) to the glyph that needs to be drawn to represent them. Because the set of supported codepoints may not be entirely contiguous (meaning there are 'holes' in the codepoint covereage), each *contiguous* range of supported codepoints is given its own [`CharMapSegment`](#charmapsegment) that describes the range of codepoints the segment covers, and what index in the [`GlyphTable`](#glyphtable) refers to the first char code in that segment.
@@ -268,9 +260,9 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 
 |                      | Offset | Type                        | Allowed Value(s) | Description |
 |:--------------------:|-------:|:---------------------------:|:----------------:| ----------- |
-| First Char in Segment| +0     | [`u32`](#primitive-types)   | any(u32)         | The first codepoint in this contiguous segment of supported codepoints |
-| Last Char in Segment | +4     | [`u32`](#primitive-types)   | any(u32)         | The last codepoint in this contiguous segment of supported codepoints  |
-| Glyph Table Location | +8     | [`u32`](#primitive-types)   | any(u32)         | What index in the glyph table corresponds to the first char code in this segment |
+| First Char in Segment| +0     | [`uint32`](#primitive-types)   | any(uint32)         | The first codepoint in this contiguous segment of supported codepoints |
+| Last Char in Segment | +4     | [`uint32`](#primitive-types)   | any(uint32)         | The last codepoint in this contiguous segment of supported codepoints  |
+| Glyph Table Location | +8     | [`uint32`](#primitive-types)   | any(uint32)         | What index in the glyph table corresponds to the first char code in this segment |
 
 [Table of Contents](#table-of-contents)
 ***
@@ -282,16 +274,16 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 
 |                   | Offset                 | Type                        | Allowed Value(s) | Description |
 |:-----------------:|-----------------------:|:---------------------------:|:----------------:| ----------- |
-| Stroke Count      | +0                     | [`u32`](#primitive-types)   | any(u32)         | How many strokes are used in this font (length of Stroke Start List) |
-| Stroke Data Len   | +4                     | [`u32`](#primitive-types)   | any(u32)         | Byte length of Stroke Data List |
-| Stroke Start List | +8                     | [`[]u32`](#primitive-types) | any(u32)         | A list that ties a stroke index to its start position in the Stroke Data List |
+| Stroke Count      | +0                     | [`uint32`](#primitive-types)   | any(uint32)         | How many strokes are used in this font (length of Stroke Start List) |
+| Stroke Data Len   | +4                     | [`uint32`](#primitive-types)   | any(uint32)         | Byte length of Stroke Data List |
+| Stroke Start List | +8                     | [`[]uint32`](#primitive-types) | any(uint32)         | A list that ties a stroke index to its start position in the Stroke Data List |
 | Stroke Data Buffer| +8 + (Stroke Count * 4)| [`[]Stroke`](#stroke)       | (see type)       | A data buffer containing the data describing each stroke. **NOTE** that the [`[]Stroke`](#stroke) structural type does not have a static size, and the Stroke Data Buffer can only be indexed using the corresponding byte start in Stroke Start List |
 
 This table describes a list of individual strokes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same strokes (where possible and sensible), reducing the overall memory footprint by letting glyphs simply list what strokes they need and where.
 
-SSFF does not support complex shapes for glyphs like most other font formats. Instead the specid
+SSFF does not support complex shapes for glyphs like most other font formats. Instead the SimpleStrokeFontFormat adheres to the idea that written language predating computers has always been 'dragging a drawing implement in 
 
-This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`u8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
+This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`uint8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
 
 It is entirely possible that a font author could define glyph shapes that fail to re-use common vertices, even where they ***could*** do so without affecting the actual visual result. For example, starting the bottom-left corner of the character 'A' at [0, 80] but starting the bottom-left corner of 'Ä' at [0, 78] and then using the glyph's baseline offsets to counteract the [0, -2] difference. With the exception of the 'umlauts', both characters could share all the same vertices for their main glyph shape if they were aligned in the [256, 256] grid similairly.
 
@@ -300,7 +292,7 @@ It is the responsibility of the font author (or the software the font author is 
 ### `EdgeType`
 | Base Type               | Size | File Alignment |
 |:-----------------------:|------|----------------|
-|[`u8`](#primitive-types) | 1    | 1              |
+|[`uint8`](#primitive-types) | 1    | 1              |
 
 | Tag                | Value | Vertices Used | Description |
 |:-------------------|:-----:|:-------------:|:------------|
@@ -326,8 +318,8 @@ It is the responsibility of the font author (or the software the font author is 
 
 |            | Offset | Type                     | Allowed Value(s) | Description |
 |:----------:|-------:|:------------------------:|:----------------:| ----------- |
-| X Position | +0     | [`u8`](#primitive-types) | any(u8)          | Distance from the bottom-left corner of a square in the 'right' direction |
-| Y Position | +1     | [`u8`](#primitive-types) | any(u8)          | Distance from the bottom-left corner of a square in the 'up' direction  |
+| X Position | +0     | [`uint8`](#primitive-types) | any(uint8)          | Distance from the bottom-left corner of a square in the 'right' direction |
+| Y Position | +1     | [`uint8`](#primitive-types) | any(uint8)          | Distance from the bottom-left corner of a square in the 'up' direction  |
 
 [Table of Contents](#table-of-contents)
 ***
