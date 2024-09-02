@@ -445,7 +445,7 @@ Required table offsets are guaranteed[*](#terminology-and-conventions) to exist 
 | Tag      | Value | Required | Table Indicated                  | Guaranteed[*](#terminology-and-conventions) [`TableOffset`](#tableoffset) location from File Start|
 |:--------:|:-----:|:--------:|:--------------------------------:|:-----:|
 | CharMap  | 0     | Yes      | [`CharMapTable`](#charmaptable)  | +12   |
-| Stroke   | 1     | Yes      | [`StrokeTable`](#stroketable)    | +20   |
+| Stroke   | 1     | Yes      | [`ShapeTable`](#ShapeTable)    | +20   |
 | Glyph    | 2     | Yes      | [`GlyphTable`](#glyphtable)      | +28   |
 | Metrics  | 3     | Yes      | [`MetricsTable`](#metricstable)  | +36   |
 | Kerning  | 4     | No       | [`KerningTable`](#kerningtable)  | ---   |
@@ -494,61 +494,69 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 [Table of Contents](#table-of-contents)
 ***
 
-### `StrokeTable`
-| Total Size                                  | File Alignment |
-|:-------------------------------------------:|:--------------:|
-| +8 + (Stroke Count * 4) + (Stroke Data Len) | 4              |
+### `ShapeTable`
+| Total Size           | File Alignment |
+|:--------------------:|:--------------:|
+| (field 'Table Size') | 4              |
 
-|                        | Offset                 | Type                          | Allowed Value(s) | Description |
-|:----------------------:|-----------------------:|:-----------------------------:|:----------------:| ----------- |
-| Stroke Count           | +0                     | [`uint32`](#primitive-types)  | any(uint32)      | How many total strokes are used in this font |
-| Short Stroke Count     | +4                     | [`uint32`](#primitive-types)  | any(uint32)      | How many strokes are indexed in the 'Short Stroke Start List'|
-| Long Stroke Count      | +8                     | [`uint32`](#primitive-types)  | any(uint32)      | How many strokes are indexed in the 'Long Stroke Start List' |
-| Stroke Data Len        | +12                    | [`uint32`](#primitive-types)  | any(uint32)      | Byte length of 'Stroke Data List' |
-| Short Stroke Start List| +16                    | [`[]uint16`](#primitive-types)| any(uint16)      | A list that ties a 'Stroke Index' <= 'Short Stroke Count' to its start position in the Stroke Data List. The value is the byte offset within 'Stroke Data Buffer' divided by 8, finding the real byte offset can be done |
-| Stroke Data Buffer| +8 + (Stroke Count * 4)| [`[]u8`](#primitive-types)       | (see type)       | A data buffer containing the data describing each stroke. **NOTE** that the [`[]Stroke`](#stroke) structural type does not have a static size, and the Stroke Data Buffer can only be indexed using the corresponding byte start in Stroke Start List |
+|                   | Offset                 | Type                              | Allowed Value(s) | Description |
+|:-----------------:|-----------------------:|:---------------------------------:|:----------------:| ----------- |
+| Table Size        | +0                     | [`uint32`](#primitive-types)      | any(uint32)      | Helper value that descibes the total byte length of this table |
+| Shape Count       | +4                     | [`uint32`](#primitive-types)      | any(uint32)      | How many total shapes are used in this font |
+| Block Count       | +8                     | [`uint32`](#primitive-types)      | any(uint32)      | How many 'Shape Blocks' are used in this table |
+| Shape Data Len    | +12                    | [`uint32`](#primitive-types)      | any(uint32)      | Byte length of 'Shape Data List' |
+| Block List        | +16                    | [`[]ShapeBlock`](#primitive-types)| (see type)       | A list of index blocks that have a block-level offset and start index followed by a list of index offsets that match a shape index to its offset in the 'Shape Data Buffer' |
+| Shape Data Buffer | +8 + (Stroke Count * 4)| [`[]u8`](#primitive-types)       | (see type)       | A data buffer containing the data describing each stroke. **NOTE** that the [`[]Stroke`](#stroke) structural type does not have a static size, and the Stroke Data Buffer can only be indexed using the corresponding byte start in Stroke Start List |
 
-This table describes a list of individual strokes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same strokes (where possible and sensible), reducing the overall memory footprint by letting glyphs simply list what strokes they need and where.
+This table describes a list of individual shapes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same shapes (where possible and sensible), reducing the overall memory footprint by letting glyphs simply list what shapes they need and where.
 
-SSFF does not support complex shapes for glyphs like most other font formats. Instead the SimpleStrokeFontFormat adheres to the idea that written language predating computers has always been 'dragging a drawing implement along a path' and/or 'filling in a collection of simple geometric shapes', and there is no reason a digital font needs any additional decorative nuances to be perfectly legible.
+Each 'Shape' is composed of one or more 'Strokes', which can either be a directional 'Pen Stroke' with a 'left' and 'right' edge or a simple geometric shape. A stroke can either be a 'fill' or a 'hole' using a signaling byte alongside the bytes that describe the edge types.
 
-This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`uint8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
+Every Shape exists at a specific point in the 'Shape Data Buffer' section of this table. A shape can have variable length, but the data is always in the following order as described in this diagram:
 
-It is entirely possible that a font author could define glyph shapes that fail to re-use common vertices, even where they ***could*** do so without affecting the actual visual result. For example, starting the bottom-left corner of the character 'A' at [0, 80] but starting the bottom-left corner of 'Ä' at [0, 78] and then using the glyph's baseline offsets to counteract the [0, -2] difference. With the exception of the 'umlauts', both characters could share all the same vertices for their main glyph shape if they were aligned in the [256, 256] grid similairly.
+```
+  Shape Start
+  |
+  |
+  |[]...| 
+```
 
-It is the responsibility of the font author (or the software the font author is using to create their font) to align their glyph shapes properly to take advantage of this optimisation where possible. Even in the worst-case, the additional space taken up by vertices should not push an SSFF font into a files size comparable to an eqivalent TTF/OTF font.
 
 ### `EdgeType`
 | Base Type               | Size | File Alignment |
 |:-----------------------:|------|----------------|
 |[`uint8`](#primitive-types) | 1    | 1              |
 
-| Tag                | Value | Vertices Used | Description |
-|:-------------------|:-----:|:-------------:|:------------|
-| Line               | 0     | 2             | Line using 2 new vertices as the [start, end] |
-| LineContinue       | 1     | 1             | Line using 1 previous vertex as [start] and 1 new vertex as [end] |
-| LineCloseLoop      | 2     | 0             | Line using 1 previous vertex as [start] and the first vertex in set as [end] |
-| QuadBeizer         | 3     | 3             | Quadratic beizer using 3 new vertices as [start, control, end] |
-| QuadBeizerContinue | 4     | 2             | Quadratic beizer using 1 previous vertex as [start], and 2 new vertices as [control, end] |
-| QuadBeizerCloseLoop| 5     | 1             | Quadratic beizer using 1 previous vertex as [start], 1 new vertex as [control], and the first vertex in set as [end] |
-| CubeBeizer         | 6     | 4             | Cubic beizer using 4 new vertices as [start, control 1, control 2, end] |
-| CubeBeizerContinue | 7     | 3             | Cubic beizer using 1 previous vertex as [start], and 3 new vertices as [control 1, control 2, end] |
-| CubeBeizerCloseLoop| 8     | 2             | Cubic beizer using 1 previous vertex as [start], 2 new vertices as [control 1, control 2], and the first vertex in set as [end] |
-| CircleRadius       | 9     | 1             | The radius of a circle, using 1 vertex as [[Radius, (unused)]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
-| ElipseRadius       | 10    | 1             | The radii of an axis-aligned elipse, using 1 vertex as [[Radius X, Radius Y]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
-| CircleRingRadius   | 11    | 1             | The radii of a circular ring, using 1 vertex [[Radius Outer, Radius Inner]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
-| ElipseRingRadius   | 12    | 2             | The radii of an axis-aligned eliptic ring, using 2 vertices as [[Radius Outer X, Radius Inner X], [Radius Outer Y, Radius Inner Y]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
-| Point              | 13    | 1             | A singular point that requires no linear interpolation (all interpolated points would just equal the original point) |
+| Tag                | Value | Bytes Used | Description |
+|:-------------------|:-----:|:----------:|:------------|
+| Line               | 0     | 4          | Line using 2 new vertices (4 bytes) as the [start, end] |
+| LineContinue       | 1     | 2          | Line using 1 previous vertex as [start] and 1 new vertex (2 bytes) as [end] |
+| LineCloseLoop      | 2     | 0          | Line using 1 previous vertex as [start] and the first vertex in set as [end] |
+| QuadBeizer         | 3     | 6          | Quadratic beizer using 3 new vertices (6 bytes) as [start, control, end] |
+| QuadBeizerContinue | 4     | 4          | Quadratic beizer using 1 previous vertex as [start], and 2 new vertices (4 bytes) as [control, end] |
+| QuadBeizerCloseLoop| 5     | 2          | Quadratic beizer using 1 previous vertex as [start], 1 new vertex (2 bytes) as [control], and the first vertex in set as [end] |
+| CubeBeizer         | 6     | 8          | Cubic beizer using 4 new vertices (8 bytes) as [start, control 1, control 2, end] |
+| CubeBeizerContinue | 7     | 6          | Cubic beizer using 1 previous vertex as [start], and 3 new vertices (6 bytes) as [control 1, control 2, end] |
+| CubeBeizerCloseLoop| 8     | 4          | Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control 1, control 2], and the first vertex in set as [end] |
+| CircleOffset       | 9     | 3          | A circle offset from (0, 0), using 1 vertex (2 bytes) as the offset and 1 byte as the diameter |
+| CircleOrigin       | 10    | 1          | A circle located at (0, 0), using 1 byte as the diameter. This is intended as a standalone shape to compose multiple glyphs |
+| ElipseOffset       | 11    | 4          | An elipse offset from (0, 0), using 1 vertex (2 bytes) as the offset and 2 bytes as the X and Y diameter, respectively |
+| ElipseOrigin       | 12    | 2          | An elipse located at (0, 0), using 2 bytes as the X and Y diameter, respectively. This is intended as a standalone shape to compose multiple glyphs |
+| CircleRingRadius   | 11    | 1          | The radii of a circular ring, using 1 vertex [[Radius Outer, Radius Inner]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
+| ElipseRingRadius   | 12    | 2          | The radii of an axis-aligned eliptic ring, using 2 vertices as [[Radius Outer X, Radius Inner X], [Radius Outer Y, Radius Inner Y]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
+| Point              | 13    | 1          | A singular point that requires no linear interpolation (all interpolated points would just equal the original point) |
 
 ### `Vertex`
 | Total Size | File Alignment |
 |:----------:|:--------------:|
 | 2          | 2              |
 
-|            | Offset | Type                     | Allowed Value(s) | Description |
-|:----------:|-------:|:------------------------:|:----------------:| ----------- |
-| X Position | +0     | [`uint8`](#primitive-types) | any(uint8)          | Distance from the bottom-left corner of a square in the 'right' direction |
-| Y Position | +1     | [`uint8`](#primitive-types) | any(uint8)          | Distance from the bottom-left corner of a square in the 'up' direction  |
+|            | Offset | Type                | Allowed Value(s)    | Description |
+|:----------:|-------:|:-------------------:|:-------------------:| ----------- |
+| X Position | +0     | [`unorm7`](#unorm7) | any(uint8, see type)| Distance from the bottom-left corner of a square in the 'right' direction, where `0 == 0.0` and `128 == 1.0` |
+| Y Position | +1     | [`unorm7`](#unorm7) | any(uint8, see type)| Distance from the bottom-left corner of a square in the 'up' direction, where `0 == 0.0` and `128 == 1.0` |
+
+All vertices are stored using the [`unorm7`](#unorm7) type, meaning within the [EM Square](https://en.wikipedia.org/wiki/Em_(typography)) there are 129 X positions and 129 Y positions, for a total of 16641 unique possible vertices within the EM square (65536 if using the full range of [`unorm7`](#unorm7) that falls outside the 0.0->1.0 range). See [`unorm7`](#unorm7) for more information.
 
 [Table of Contents](#table-of-contents)
 ***
