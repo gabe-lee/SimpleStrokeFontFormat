@@ -14,6 +14,9 @@ Version 0.1 technical specification for the SimpleStrokeFontFormat (.ssff)
   - [Structural types](#structural-types)
   - [Enumeration types](#enumeration-types)
   - [Code samples](#code-samples)
+- [The unorm7/inorm7 types](#the-unorm7inorm7-types)
+  - [unorm7](#unorm7)
+  - [inorm7](#inorm7)
 - [File Format](#file-format)
   - [SimpleStrokeFont](#simplestrokefont)
     - [TableOffset](#tableoffset)
@@ -74,20 +77,15 @@ However for a significant portion of real-world use cases this level of 'perfect
 | Binary     | 0b00101010 | 42 |
 
 #### Primitive types
-| Type    | Size (Bytes) | Min Value   | Max Value | Byte Order |
-|:--------|:------------:|------------:|----------:|------------|
-| `bool`  | 1            | 0 (false)   | 1 (true)  | N/A |
-| `uint8` | 1            | 0           | 255       | N/A |
-| `int8`  | 1            | -128        | 127       | N/A |
-| `uint16`| 2            | 0           | 65535     | Little Endian |
-| `int16` | 2            | -32768      | 32767     | Little Endian |
-| `uint32`| 4            | 0           | 4294967295| Little Endian |
-| `int32` | 4            | -2147483648 | 2147483647| Little Endian |
-
-#### Semantic types
-| Type     | Base Type | Semantics   |
-|:---------|:---------:|:------------|
-| `unorm8` | `uint8`   | A 1-byte integer type that represents a floating point value, where [0 -> 255] == [0.0 -> 1.0]. The consuming code should convert this to a float, for example: `var real_val = int_to_float(unorm8_val) / 255.0` |
+| Type     | Size (Bytes) | Min Value   | Max Value | Byte Order    | Description |
+|:---------|:------------:|------------:|----------:|---------------|:------------|
+| `bool`   | 1            | 0 (false)   | 1 (true)  | N/A           | A 1-byte value representing either 'true' (1) or false (0) |
+| `uint8`  | 1            | 0           | 255       | N/A           | A 1-byte unsigned integer |
+| `int8`   | 1            | -128        | 127       | N/A           | A 1-byte signed integer |
+| `uint16` | 2            | 0           | 65535     | Little Endian | A 2-byte unsigned integer |
+| `int16`  | 2            | -32768      | 32767     | Little Endian | A 2-byte signed integer |
+| `uint32` | 4            | 0           | 4294967295| Little Endian | A 4-byte unsigned integer |
+| `int32`  | 4            | -2147483648 | 2147483647| Little Endian | A 4-byte signed integer |
 
 #### Array types
 | Type   | Description                                                                                                    | Example |
@@ -164,12 +162,241 @@ const bob = Employee{
   salary: 68500.00,
 }
 
-//TODO
+// Application start point
+func main() {
+  // Call the 'print_employee' function with the predefined 'bob' employee, saving the result into a variable
+  var bob_makes_six_figures = print_employee(bob)
+  // Print a message to the user depending on if 'bob' makes >= 100000.00 salary
+  if bob_makes_six_figures {
+    fmt.Println("Bob makes a ton of money!")
+  } else {
+    fmt.Println("Bob makes a some money...")
+  }
+}
 ```
 
 [Table of Contents](#table-of-contents)
 ***
 ***
+
+# The unorm7/inorm7 types
+
+### `unorm7`
+| Type     | Base Type                   | Size (Bytes) |
+|:--------:|:---------------------------:|:-------------|
+| `unorm7` | [`uint8`](#primitive-types) | 1            |
+
+SSFF uses this special semantic integer type to encode a floating-point value using 1 byte (with reduced precision). A large percentage of data in (most) font formats is usually taken up by the actual vertices of glyph geometry and other suplementary values that operate on them. Instead of storing data directly as 16 or 32 bit floating/fixed point values, this encoding represents a compromise between memory footprint and additional processing requirement before rasterization. However, as seen below, the decoding process is trivial compared to many other compression techniques
+
+In the `unorm7` format, the integer value range `[0, 128]` is directly mapped to the floating point range `[0.0, 1.0]`, and although the semantic intent is to support this range primarily, the same transformation algorithm will map the integer range `[128, 255]` to the floating point range `[1.0, 1.9921875]`. Examples values are in the table below:
+
+| Integer Value | Float Value | | Integer Value | Float Value | 
+|--------------:|:------------|-|--------------:|:------------|
+|             0 |   0.0       | |           128 |   1.0       |
+|             1 |   0.0078125 | |           129 |   1.0078125 |
+|             2 |   0.015625  | |           130 |   1.015625  |
+|           ... |   ...       | |           ... |   ...       |
+|             4 |   0.03125   | |           132 |   1.03125   |
+|           ... |   ...       | |           ... |   ...       |
+|             8 |   0.0625    | |           136 |   1.0625    |
+|           ... |   ...       | |           ... |   ...       |
+|            16 |   0.125     | |           144 |   1.125     |
+|           ... |   ...       | |           ... |   ...       |
+|            32 |   0.25      | |           160 |   1.25      |
+|           ... |   ...       | |           ... |   ...       |
+|            64 |   0.5       | |           192 |   1.5       |
+|           ... |   ...       | |           ... |   ...       |
+|           127 |   0.9921875 | |           255 |   1.9921875 |
+|           128 |   1.0       | |               |             |
+ 
+There are several reasons for setting the integer to float ratio at `128 == 1.0`. Primarily, it means the integer value can be directly transformed to any [IEEE 754 floating point format](https://en.wikipedia.org/wiki/IEEE_754) with trivial bitwise operations. For example, observe the bitwise layout of the numbers in integer and floating point below:
+```
+INTEGER BINARY RANGE (0, 128]    ==       x_xxxxxxx
+FLOAT 16 BINARY RANGE (0.0, 1.0] == 0_0111x_xxxxxxx000
+
+INTEGER BINARY EXACTLY ZERO      ==       0_0000000
+FLOAT 16 BINARY EXACTLY ZERO     == 0_00000_0000000000
+
+INTEGER BINARY RANGE (0, 128]    ==          x_xxxxxxx                
+FLOAT 32 BINARY RANGE (0.0, 1.0] == 0_0111111x_xxxxxxx0000000000000000
+
+INTEGER BINARY EXACTLY ZERO      ==          0_0000000
+FLOAT 32 BINARY EXACTLY ZERO     == 0_00000000_00000000000000000000000
+
+INTEGER BINARY RANGE (0, 128]    ==             x_xxxxxxx
+FLOAT 64 BINARY RANGE (0.0, 1.0] == 0_0111111111x_xxxxxxx000000000000000000000000000000000000000000000
+
+INTEGER BINARY EXACTLY ZERO      ==             0_0000000
+FLOAT 64 BINARY EXACTLY ZERO     == 0_00000000000_0000000000000000000000000000000000000000000000000000
+```
+
+It can be observed that using the `128 == 1.0` ratio, any `unorm7` integer value ***GREATER THAN ZERO*** can be directly transformed into the desired float format by performing a bitwise left-shift (`<<` operator in most languages) and then a bitwise 'OR' (`|` operator in most languages) with a static bit mask for the floating point exponent bits.
+
+The zero value of floating point numbers is problematic with this observation, as the zero value has a different value for its exponent bits. This can be solved either by using an 'IF' statement to return the float value `0.0` when the integer value equals `0` *OR* by using a bitwise smear of the integer value and performing a bitwise 'AND' using the smeared value on the exponent mask before applying it to the final result with the 'OR' operation.
+
+Below are sample functions (in Golang for readability) showing how this can be done
+
+```go
+// Needed for directly bit-casting ints to floats in Golang
+import "math"
+
+const MASK_16  uint16 = 0b_0_01110_0000000000
+const SHIFT_16 uint   = 3
+
+const MASK_32  uint32 = 0b_0_01111110_00000000000000000000000
+const SHIFT_32 uint   = 16
+
+const MASK_64  uint32 = 0b_0_01111111110_0000000000000000000000000000000000000000000000000000
+const SHIFT_64 uint   = 45
+
+func unorm7_to_float32_if(val uint8) float32 {
+  if val == 0 {
+    return 0.0
+  }
+  var float_bits uint32 = MASK_32 | (uint32(val) << SHIFT_32)
+  // This function directly casts the exact bits of an integer as a floating point number with the same bit-width
+  return math.Float32frombits(float_bits) 
+}
+
+func unorm7_to_float32_smear(val uint8) float32 {
+  var shifted_val uint32 = (uint32(val) << SHIFT_32)
+  var smear_val uint32 = shifted_val
+  smear_val = smear_val | (smear_val << 1)
+  smear_val = smear_val | (smear_val << 2)
+  smear_val = smear_val | (smear_val << 4)
+  smear_val = smear_val | (smear_val << 8)
+  // All bits in MASK_32 are overlapped by the bit smear now
+  // If original value >= 1, all overlapping bits will be `1`
+  // If original value == 0, all overlapping bits will be `0`
+  // Performing an 'AND' between `MASK_32` and `smear_val` will toggle the mask
+  // on or off depending on whether the original value was zero or not
+  var float_bits uint32 = (MASK_32 & smear_val) | shifted_val
+  // This function directly casts the exact bits of an integer as a floating point number with the same bit-width
+  return math.Float32frombits(float_bits) 
+}
+
+// Functions for float16 and float64 follow the exact same pattern using their respective constants,
+// with the following caveats:
+//   - Golang does not have a float16 type so the algorithm is not applicable in this language, but may be valid in other languages
+//   - The `unorm7_to_float64_smear` function requires one additional smear at the end of the chain with a bit-shift of `1`: `smear_val = smear_val | (smear_val << 1)`
+```
+
+Another reason for this format is that it reduces the range of expression a font author has to work with. It may sound negative, and it does limit the amount of nuance a glyph shape can be described in, but by that same token it helps reduce mistakes in font consitency and allows more opportunities to optimize a font file's layout and compression.
+
+Finally, the ability to consider values greater than 128 as floating points greater than 1.0 can be considered a 'feature' for supporting extra-wide or extra-tall glyphs at no extra processing or storage costs.
+
+### `inorm7`
+| Type     | Base Type                   | Size (Bytes) |
+|:--------:|:---------------------------:|:-------------|
+| `inorm7` | [`uint8`](#primitive-types) | 1            |
+
+This is the *signed* counterpart to `unorm7`. The integer range `[0, 127]` maps to the floating point range `[+0.0, +0.9921875]` and the integer range `[128, 255]` maps to the floating point range `[-0.0, -0.9921875]`
+
+**NOTE** that this is *not* a a "two's complement" encoding. The uppermost bit (bit 7) is represents the sign bit, and the lower 7 bits (bits 0-6) are the magnitude. This is to match the way [IEEE 754 floating point formats](https://en.wikipedia.org/wiki/IEEE_754) operate and simplifies the decoding operation. Example values are listed below:
+
+| Integer Value | Float Value  | | Integer Value | Float Value  | 
+|--------------:|:-------------|-|--------------:|:-------------|
+|             0 |   +0.0       | |           128 |   -0.0       |
+|             1 |   +0.0078125 | |           129 |   -0.0078125 |
+|             2 |   +0.015625  | |           130 |   -0.015625  |
+|           ... |   ...        | |           ... |   ...        |
+|             4 |   +0.03125   | |           132 |   -0.03125   |
+|           ... |   ...        | |           ... |   ...        |
+|             8 |   +0.0625    | |           136 |   -0.0625    |
+|           ... |   ...        | |           ... |   ...        |
+|            16 |   +0.125     | |           144 |   -0.125     |
+|           ... |   ...        | |           ... |   ...        |
+|            32 |   +0.25      | |           160 |   -0.25      |
+|           ... |   ...        | |           ... |   ...        |
+|            64 |   +0.5       | |           192 |   -0.5       |
+|           ... |   ...        | |           ... |   ...        |
+|           127 |   +0.9921875 | |           255 |   -0.9921875 |
+ 
+The bitwise mapping is shown below
+```
+INTEGER BINARY RANGE (0, 127]            == 0_______xxxxxxx
+FLOAT 16 BINARY RANGE (+0.0, +0.9921875] == 0_01110_xxxxxxx000
+
+INTEGER BINARY EXACTLY ZERO              == 0_______0000000
+FLOAT 16 BINARY EXACTLY ZERO             == 0_00000_0000000000
+
+INTEGER BINARY RANGE (128, 255]          == 1_______xxxxxxx
+FLOAT 16 BINARY RANGE (-0.0, -0.9921875] == 1_01110_xxxxxxx000
+
+INTEGER BINARY RANGE (0, 127]            == 0__________xxxxxxx                
+FLOAT 32 BINARY RANGE (+0.0, +0.9921875] == 0_01111110_xxxxxxx0000000000000000
+
+INTEGER BINARY EXACTLY ZERO              == 0__________0000000
+FLOAT 32 BINARY EXACTLY ZERO             == 0_00000000_00000000000000000000000
+
+INTEGER BINARY RANGE (128, 255]          == 1__________xxxxxxx                
+FLOAT 32 BINARY RANGE (-0.0, -0.9921875] == 1_01111110_xxxxxxx0000000000000000
+
+INTEGER BINARY RANGE (0, 127]            == 0_____________xxxxxxx
+FLOAT 64 BINARY RANGE (+0.0, +0.9921875] == 0_01111111110_xxxxxxx000000000000000000000000000000000000000000000
+
+INTEGER BINARY EXACTLY ZERO              == 0_____________0000000
+FLOAT 64 BINARY EXACTLY ZERO             == 0_00000000000_0000000000000000000000000000000000000000000000000000
+
+INTEGER BINARY RANGE (128, 255]          == 1_____________xxxxxxx
+FLOAT 64 BINARY RANGE (-0.0, -0.9921875] == 1_01111111110_xxxxxxx000000000000000000000000000000000000000000000
+```
+The only change to the algorithms compared to the `unorm7` versions is that the top bit of the integer is separated from the bottom 7 and placed in the topmost bit position of the floating point bit layout:
+
+```go
+// Needed for directly bit-casting ints to floats in Golang
+import "math"
+
+const SIGN_BIT_8 uint8 = 0b_10000000
+const VAL_MASK_8 uint8 = 0b_01111111
+
+const MASK_16  uint16    = 0b_0_01110_0000000000
+const VAL_SHIFT_16 uint  = 3
+const SIGN_SHIFT_16 uint = 5
+
+const MASK_32  uint32    = 0b_0_01111110_00000000000000000000000
+const VAL_SHIFT_32 uint  = 16
+const SIGN_SHIFT_32 uint = 8
+
+const MASK_64  uint32    = 0b_0_01111111110_0000000000000000000000000000000000000000000000000000
+const VAL_SHIFT_64 uint  = 45
+const SIGN_SHIFT_32 uint = 8
+
+func inorm7_to_float32_if(val uint8) float32 {
+  if val == 0 {
+    return 0.0
+  }
+  var float_bits uint32 = uint32(val & SIGN_BIT_8) << SIGN_SHIFT_32
+  float_bits = float_bits | MASK_32 | (uint32(val & VAL_MASK_8) << VAL_SHIFT_32)
+  // This function directly casts the exact bits of an integer as a floating point number with the same bit-width
+  return math.Float32frombits(float_bits) 
+}
+
+func inorm7_to_float32_smear(val uint8) float32 {
+  var shifted_val uint32 = (uint32(val & VAL_MASK_8) << VAL_SHIFT_32)
+  var smear_val uint32 = shifted_val
+  smear_val = smear_val | (smear_val << 1)
+  smear_val = smear_val | (smear_val << 2)
+  smear_val = smear_val | (smear_val << 4)
+  smear_val = smear_val | (smear_val << 8)
+  // All bits in MASK_32 are overlapped by the bit smear now
+  // If original value >= 1, all overlapping bits will be `1`
+  // If original value == 0, all overlapping bits will be `0`
+  // Performing an 'AND' between `MASK_32` and `smear_val` will toggle the mask
+  // on or off depending on whether the original value was zero or not
+  var float_bits uint32 = uint32(val & SIGN_BIT_8) << SIGN_SHIFT_32
+  float_bits = float_bits | (MASK_32 & smear_val) | shifted_val
+  // This function directly casts the exact bits of an integer as a floating point number with the same bit-width
+  return math.Float32frombits(float_bits) 
+}
+
+// Functions for float16 and float64 follow the exact same pattern using their respective constants,
+// with the following caveats:
+//   - Golang does not have a float16 type so the algorithm is not applicable in this language, but may be valid in other languages
+//   - The `unorm7_to_float64_smear` function requires one additional smear at the end of the chain with a bit-shift of `1`: `smear_val = smear_val | (smear_val << 1)`
+```
+
+The main use of this type is for describing both positive and negative offsets from an existing point, for example in kerning
 
 # File Format
 The font file in its entirety (or the portion of a data buffer the file is located at) is represented with the following structure:
@@ -272,16 +499,18 @@ Glyph Index 0 is reserved for a glyph representing a codepoint that is not suppo
 |:-------------------------------------------:|:--------------:|
 | +8 + (Stroke Count * 4) + (Stroke Data Len) | 4              |
 
-|                   | Offset                 | Type                        | Allowed Value(s) | Description |
-|:-----------------:|-----------------------:|:---------------------------:|:----------------:| ----------- |
-| Stroke Count      | +0                     | [`uint32`](#primitive-types)   | any(uint32)         | How many strokes are used in this font (length of Stroke Start List) |
-| Stroke Data Len   | +4                     | [`uint32`](#primitive-types)   | any(uint32)         | Byte length of Stroke Data List |
-| Stroke Start List | +8                     | [`[]uint32`](#primitive-types) | any(uint32)         | A list that ties a stroke index to its start position in the Stroke Data List |
-| Stroke Data Buffer| +8 + (Stroke Count * 4)| [`[]Stroke`](#stroke)       | (see type)       | A data buffer containing the data describing each stroke. **NOTE** that the [`[]Stroke`](#stroke) structural type does not have a static size, and the Stroke Data Buffer can only be indexed using the corresponding byte start in Stroke Start List |
+|                        | Offset                 | Type                          | Allowed Value(s) | Description |
+|:----------------------:|-----------------------:|:-----------------------------:|:----------------:| ----------- |
+| Stroke Count           | +0                     | [`uint32`](#primitive-types)  | any(uint32)      | How many total strokes are used in this font |
+| Short Stroke Count     | +4                     | [`uint32`](#primitive-types)  | any(uint32)      | How many strokes are indexed in the 'Short Stroke Start List'|
+| Long Stroke Count      | +8                     | [`uint32`](#primitive-types)  | any(uint32)      | How many strokes are indexed in the 'Long Stroke Start List' |
+| Stroke Data Len        | +12                    | [`uint32`](#primitive-types)  | any(uint32)      | Byte length of 'Stroke Data List' |
+| Short Stroke Start List| +16                    | [`[]uint16`](#primitive-types)| any(uint16)      | A list that ties a 'Stroke Index' <= 'Short Stroke Count' to its start position in the Stroke Data List. The value is the byte offset within 'Stroke Data Buffer' divided by 8, finding the real byte offset can be done |
+| Stroke Data Buffer| +8 + (Stroke Count * 4)| [`[]u8`](#primitive-types)       | (see type)       | A data buffer containing the data describing each stroke. **NOTE** that the [`[]Stroke`](#stroke) structural type does not have a static size, and the Stroke Data Buffer can only be indexed using the corresponding byte start in Stroke Start List |
 
 This table describes a list of individual strokes used in complete character glyphs. The reasoning behind separating the two is that many glyphs can (and should) re-use the same strokes (where possible and sensible), reducing the overall memory footprint by letting glyphs simply list what strokes they need and where.
 
-SSFF does not support complex shapes for glyphs like most other font formats. Instead the SimpleStrokeFontFormat adheres to the idea that written language predating computers has always been 'dragging a drawing implement in 
+SSFF does not support complex shapes for glyphs like most other font formats. Instead the SimpleStrokeFontFormat adheres to the idea that written language predating computers has always been 'dragging a drawing implement along a path' and/or 'filling in a collection of simple geometric shapes', and there is no reason a digital font needs any additional decorative nuances to be perfectly legible.
 
 This table holds all *unique* vertices of the font. The SSFF specification limits vertex dimensions to the [`uint8`](#primitive-types) type, meaning a dimension only has 256 unique values it can possible have, for a total of a *maximum* of 65536 possible unique vertices. However, since a font will usually want visual uniformity between characters, many of the unique vertex values will be re-used throughout many of the font's glyphs. For this reason, the SSFF simply keeps track of all unique values of vertices used in the font, and the strokes that define a glyph's shape merely index into this array to find the actual vertex value.
 
