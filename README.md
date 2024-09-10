@@ -515,11 +515,33 @@ Each 'Shape' is composed of one or more 'Strokes', which can either be a directi
 Every Shape exists at a specific point in the 'Shape Data Buffer' section of this table. A shape can have variable length, but the data is always in the following order as described in this diagram:
 
 ```
-  Shape Start
-  |
-  |
-  |[]...| 
+ Shape          Fill             Hole                              Shape
+ Start       Right Edge        Left Edge                           End
+  |   Fill   Type Codes  Fill  Type Codes   Hole                    |
+  |   Stroke  \      /  Polygon \      /   Polygon   Shape Parameter|
+  |   Count    \    / Type Codes \    /     Count    |   Buffer    ||
+  |     |       \  /     \  /     \  /       |       \             /|
+..|.X...X...[]...[]...X...[]...X...[]...[]...X...[]...[===========].|.....(remainder of 'Shape Data Buffer')
+    |      /  \       |        |       /  \     /  \                
+Shape     /    \    Fill      Hole    /    \    Hole                
+Features / Fill \   Polygon   Stroke / Hole \   Polygon
+         Left Edge  Count     Count  Right Edge Type Codes
+         Type Codes                  Type Codes
 ```
+
+### `ShapeFeatures`
+| Base Type                  | Size | File Alignment |
+|:--------------------------:|------|----------------|
+|[`uint8`](#primitive-types) | 1    | 1              |
+
+| Tag                 | Value | Description |
+|:--------------------|:-----:|:------------|
+| HasFillStrokes      | 1     | Shape has a section dedicated to strokes with left and right edges that are filled in |
+| HasFillPolys        | 2     | Shape has a section dedicated to polygons that are filled in |
+| HasHoleStrokes      | 4     | Shape has a section dedicated to strokes with left and right edges that should be erased |
+| HasHolePolys        | 8     | Shape has a section dedicated to polygons that should be erased |
+
+This enum type is used as a bit-flag value that can combine multiple features. For example if a shape 'HasFillStrokes' and 'HasHoleStrokes', the value of the byte would be a bitwise-or of the two values: `var features = 1 | 4`
 
 
 ### `EdgeType`
@@ -527,38 +549,45 @@ Every Shape exists at a specific point in the 'Shape Data Buffer' section of thi
 |:-----------------------:|------|----------------|
 |[`uint8`](#primitive-types) | 1    | 1              |
 
-| Tag                 | Value | Bytes Used | Description |
-|:--------------------|:-----:|:----------:|:------------|
-| Point               | 0     | 2          | A singular point using 1 new vertex (2 bytes) |
-| PointLast           | 1     | 0          | A singular point using the previous vertex on the same edge side (0  additional bytes) |
-| PointFirst          | 2     | 0          | A singular point using the first vertex in the edge side set (0  additional bytes) |
-| Line                | 3     | 4          | Line using 2 new vertices (4 bytes) as [start, end] |
+The following table uses the following conventions for the 'Byte Map' table:
+- An 'Edge Side' means either a 'left' edge or 'right' edge,
+- Named data in square brackets '[]' indicates new bytes to consume from the 'Edge Parameters' buffer section (on the same edge), in order
+- Named data in curly brackets '{}' indicates to use the immediately previous bytes from the 'Edge Parameters' buffer section (on the same edge), in order
+- Named data in angle brackets '<>' indicates to use the *first* bytes in the 'set' from the 'Edge Parameters' buffer section (on the same edge), in order.
+- A 'edge set' refers to a subset of the edge data beginning with a stand-alone edge type (Point, Line, QuadBeizer, CubeBeizer, etc) followed by any number of continuing edge types (PointLast, PointFirst, LineContinue, LineCloseLoop, QuadBeizerContinue, QuadBeizerCloseLoop, CubeBeizerContinue, CubeBeizerCloseLoop)
+
+| Tag                 | Value | Bytes Used | Byte Map          | Description |
+|:--------------------|:-----:|:----------:|:------------------|:------------|
+| Point               | 0     | 2          |[point.x, point.y] | A singular point using 1 new vertex (2 bytes) |
+| PointLast           | 1     | 0          |{prev.x, prev.y}   | A singular point using the previous vertex on the same edge side (0  additional bytes) |
+| PointFirst          | 2     | 0          |{first.x, first.y}   | A singular point using the first vertex in the edge side set (0  additional bytes) |
+| Line                | 3     | 4          |[start.x, start.y, end.x, end.y] | Line using 2 new vertices (4 bytes) as [start, end] |
 | LineContinue        | 4     | 2          | Line using 1 previous vertex as [start] and 1 new vertex (2 bytes) as [end] |
 | LineCloseLoop       | 5     | 0          | Line using 1 previous vertex as [start] and the first vertex in set as [end] |
 | VLine               | 6     | 3          | Veritcal Line using 1 new vertex and 1 new Y-value (3 bytes) as [start, end = [start.x, end.y]] |
-| VLineContinue       | 7     | 1          | Vertical Line using 1 previous vertex as [start] and 1 new Y-value (1 byte) as [end] = [start.x, new-y] |
+| VLineContinue       | 7     | 1          | Vertical Line using 1 previous vertex as [start] and 1 new Y-value (1 byte) as [end] = [start.x, new_y] |
 | VLineCloseLoop      | 8     | 0          | Vertical Line using 1 previous vertex as [start] and the first vertex in set as [end] (same as 'LineCloseLoop', however this code indicates that the line formed is guaranteed to be a vertical line) |
 | HLine               | 6     | 3          | Horizontal Line using 1 new vertex and 1 new X-value (3 bytes) as [start, end = [end.x, start.y]] |
-| HLineContinue       | 7     | 1          | Horizontal Line using 1 previous vertex as [start] and 1 new X-value (1 byte) as [end] = [new-x, start.y] |
+| HLineContinue       | 7     | 1          | Horizontal Line using 1 previous vertex as [start] and 1 new X-value (1 byte) as [end] = [new_x, start.y] |
 | HLineCloseLoop      | 8     | 0          | Horizontal Line using 1 previous vertex as [start] and the first vertex in set as [end] (same as 'LineCloseLoop', however this code indicates that the line formed is guaranteed to be a horizontal line) |
 | QuadBeizer          | 9     | 6          | Quadratic beizer using 3 new vertices (6 bytes) as [start, control, end] |
 | QuadBeizerContinue  | 10    | 4          | Quadratic beizer using 1 previous vertex as [start], and 2 new vertices (4 bytes) as [control, end] |
 | QuadBeizerCloseLoop | 11    | 2          | Quadratic beizer using 1 previous vertex as [start], 1 new vertex (2 bytes) as [control], and the first vertex in set as [end] |
-| VQuadBeizer         | 12    | 5          | 'Vertical' Quadratic beizer using 2 new vertices and 1 new Y-value (5 bytes) as [start, control, end = [start.x, new-y]]. Control point Y-value is also guaranteed to be in the inclusive-range [start.y <-> end.y] |
-| VQuadBeizerContinue | 13    | 3          | 'Vertical' Quadratic beizer using 1 previous vertex as [start], and 1 new vertex and 1 new Y-value (3 bytes) as [control, end = [start.x, new-y]]. Control point Y-value is also guaranteed to be in the inclusive-range [start.y <-> end.y] |
+| VQuadBeizer         | 12    | 5          | 'Vertical' Quadratic beizer using 2 new vertices and 1 new Y-value (5 bytes) as [start, control, end = [start.x, new_y]]. Control point Y-value is also guaranteed to be in the inclusive-range [start.y <-> end.y] |
+| VQuadBeizerContinue | 13    | 3          | 'Vertical' Quadratic beizer using 1 previous vertex as [start], and 1 new vertex and 1 new Y-value (3 bytes) as [control, end = [start.x, new_y]]. Control point Y-value is also guaranteed to be in the inclusive-range [start.y <-> end.y] |
 | VQuadBeizerCloseLoop| 14    | 2          | 'Vertical' Quadratic beizer using 1 previous vertex as [start], 1 new vertex (2 bytes) as [control], and the first vertex in set as [end]. Start and end are guaranteed to lay on a vertical line, and control point Y-value is also guaranteed to be in the inclusive-range [start.y <-> end.y] |
-| HQuadBeizer         | 15    | 5          | 'Horizontal' Quadratic beizer using 2 new vertices and 1 new X-value (5 bytes) as [start, control, end = [new-x, start.y]]. Control point X-value is also guaranteed to be in the inclusive-range [start.x <-> end.x] |
-| HQuadBeizerContinue | 16    | 3          | 'Horizontal' Quadratic beizer using 1 previous vertex as [start], and 1 new vertex and 1 new X-Value (3 bytes) as [control, end = [new-x, start.y]]. Control point X-value is also guaranteed to be in the inclusive-range [start.x <-> end.x] |
+| HQuadBeizer         | 15    | 5          | 'Horizontal' Quadratic beizer using 2 new vertices and 1 new X-value (5 bytes) as [start, control, end = [new_x, start.y]]. Control point X-value is also guaranteed to be in the inclusive-range [start.x <-> end.x] |
+| HQuadBeizerContinue | 16    | 3          | 'Horizontal' Quadratic beizer using 1 previous vertex as [start], and 1 new vertex and 1 new X-Value (3 bytes) as [control, end = [new_x, start.y]]. Control point X-value is also guaranteed to be in the inclusive-range [start.x <-> end.x] |
 | HQuadBeizerCloseLoop| 17    | 2          | 'Horizontal' Quadratic beizer using 1 previous vertex as [start], 1 new vertex (2 bytes) as [control], and the first vertex in set as [end]. Start and end are guaranteed to lay on a horizontal line, and control point X-value is also guaranteed to be in the inclusive-range [start.x <-> end.x] |
-| CubeBeizer          | 18    | 8          | Cubic beizer using 4 new vertices (8 bytes) as [start, control-1, control-2, end] |
-| CubeBeizerContinue  | 19    | 6          | Cubic beizer using 1 previous vertex as [start], and 3 new vertices (6 bytes) as [control-1, control-2, end] |
-| CubeBeizerCloseLoop | 20    | 4          | Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control-1, control-2], and the first vertex in set as [end] |
-| VCubeBeizer         | 21    | 7          | 'Vertical' Cubic beizer using 3 new vertices and 1 new Y-value (7 bytes) as [start, control-1, control-2, end = [start.x, new-y]]. Control point Y-values are also guaranteed to be in the inclusive-ranges: control-1.y in range [start.y <-> control-2.y], control-2.y in range [control-1.y <-> end.y] |
-| VCubeBeizerContinue | 22    | 5          | 'Vertical' Cubic beizer using 1 previous vertex as [start], and 2 new vertices and 1 new Y-value (5 bytes) as [control-1, control-2, end = [start.x, new-y]]. Control point Y-values are also guaranteed to be in the inclusive-ranges: control-1.y in range [start.y <-> control-2.y], control-2.y in range [control-1.y <-> end.y] |
-| VCubeBeizerCloseLoop| 23    | 4          | 'Vertical' Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control-1, control-2], and the first vertex in set as [end]. Start and end are guaranteed to lay on a vertical line, and control point Y-values are also guaranteed to be in the inclusive-ranges: control-1.y in range [start.y <-> control-2.y], control-2.y in range [control-1.y <-> end.y] |
-| HCubeBeizer         | 24    | 7          | 'Horizontal' Cubic beizer using 3 new vertices and 1 new X-value (7 bytes) as [start, control-1, control-2, end = [new-x, start.y]]. Control point X-values are also guaranteed to be in the inclusive-ranges: control-1.x in range [start.x <-> control-2.x], control-2.x in range [control-1.x <-> end.x] |
-| HCubeBeizerContinue | 25    | 5          | 'Horizontal' Cubic beizer using 1 previous vertex as [start], and 2 new vertices and 1 new X-value (5 bytes) as [control-1, control-2, end = [new-x, start.y]]. Control point X-values are also guaranteed to be in the inclusive-ranges: control-1.x in range [start.x <-> control-2.x], control-2.x in range [control-1.x <-> end.x] |
-| HCubeBeizerCloseLoop| 26    | 4          | 'Horizontal' Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control-1, control-2], and the first vertex in set as [end]. Start and end are guaranteed to lay on a horizontal line, and control point X-values are also guaranteed to be in the inclusive-ranges: control-1.x in range [start.x <-> control-2.x], control-2.x in range [control-1.x <-> end.x] |
+| CubeBeizer          | 18    | 8          | Cubic beizer using 4 new vertices (8 bytes) as [start, control_1, control_2, end] |
+| CubeBeizerContinue  | 19    | 6          | Cubic beizer using 1 previous vertex as [start], and 3 new vertices (6 bytes) as [control_1, control_2, end] |
+| CubeBeizerCloseLoop | 20    | 4          | Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control_1, control_2], and the first vertex in set as [end] |
+| VCubeBeizer         | 21    | 7          | 'Vertical' Cubic beizer using 3 new vertices and 1 new Y-value (7 bytes) as [start, control_1, control_2, end = [start.x, new_y]]. Control point Y-values are also guaranteed to be in the inclusive-ranges: control_1.y in range [start.y <-> control_2.y], control_2.y in range [control_1.y <-> end.y] |
+| VCubeBeizerContinue | 22    | 5          | 'Vertical' Cubic beizer using 1 previous vertex as [start], and 2 new vertices and 1 new Y-value (5 bytes) as [control_1, control_2, end = [start.x, new_y]]. Control point Y-values are also guaranteed to be in the inclusive-ranges: control_1.y in range [start.y <-> control_2.y], control_2.y in range [control_1.y <-> end.y] |
+| VCubeBeizerCloseLoop| 23    | 4          | 'Vertical' Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control_1, control_2], and the first vertex in set as [end]. Start and end are guaranteed to lay on a vertical line, and control point Y-values are also guaranteed to be in the inclusive-ranges: control_1.y in range [start.y <-> control_2.y], control_2.y in range [control_1.y <-> end.y] |
+| HCubeBeizer         | 24    | 7          | 'Horizontal' Cubic beizer using 3 new vertices and 1 new X-value (7 bytes) as [start, control_1, control_2, end = [new_x, start.y]]. Control point X-values are also guaranteed to be in the inclusive-ranges: control_1.x in range [start.x <-> control_2.x], control_2.x in range [control_1.x <-> end.x] |
+| HCubeBeizerContinue | 25    | 5          | 'Horizontal' Cubic beizer using 1 previous vertex as [start], and 2 new vertices and 1 new X-value (5 bytes) as [control_1, control_2, end = [new_x, start.y]]. Control point X-values are also guaranteed to be in the inclusive-ranges: control_1.x in range [start.x <-> control_2.x], control_2.x in range [control_1.x <-> end.x] |
+| HCubeBeizerCloseLoop| 26    | 4          | 'Horizontal' Cubic beizer using 1 previous vertex as [start], 2 new vertices (4 bytes) as [control_1, control_2], and the first vertex in set as [end]. Start and end are guaranteed to lay on a horizontal line, and control point X-values are also guaranteed to be in the inclusive-ranges: control-1.x in range [start.x <-> control_2.x], control_2.x in range [control_1.x <-> end.x] |
 | CircleOffset        | 27    | 3          | A circle offset from (0, 0), using 1 vertex (2 bytes) as the offset and 1 byte as the diameter |
 | CircleOrigin        | 28    | 1          | A circle located at (0, 0), using 1 byte as the diameter. This is intended as a standalone shape to compose multiple glyphs |
 | CircleArcOffset     | 29    | 5          | A circular arc offset from (0, 0), using 1 vertex (2 bytes) as the offset, 1 byte as the diameter, and 2 bytes as the start and end angle of the arc (as a [`unorm7`](#unorm7) where 0.0 = 0 degrees and 1.0 = 360 degrees) |
@@ -568,6 +597,10 @@ Every Shape exists at a specific point in the 'Shape Data Buffer' section of thi
 | ElipseArcOffset     | 33    | 6          | An eliptic arc offset from (0, 0), using 1 vertex (2 bytes) as the offset, 2 bytes as the X and Y diameter (respectively), and 2 bytes as the start and end angle of the arc (as a [`unorm7`](#unorm7) where 0.0 = 0 degrees and 1.0 = 360 degrees)|
 | ElipseArcOrigin     | 34    | 4          | An eliptic arc located at (0, 0), using 2 bytes as the X and Y diameter (respectively) and 2 bytes as the start and end angle of the arc (as a [`unorm7`](#unorm7) where 0.0 = 0 degrees and 1.0 = 360 degrees) This is intended as a standalone shape to compose multiple glyphs |
 //TODO
+| CircleRingOffset    | 35    | 4          | A circular ring offset from (0, 0), using 1 vertex (2 bytes) as the offset and 2 bytes as the [inner_diameter, outer_diameter] |
+| CircleRingOrigin    | 36    | 2          | A circular ring located at (0, 0), using 2 bytes as the [inner_diameter, outer_diameter]. This is intended as a standalone shape to compose multiple glyphs |
+| CircleRingArcOffset | 37    | 6          | A circular ring arc offset from (0, 0), using 1 vertex (2 bytes) as the offset, 2 bytes as the [inner_diameter, outer_diameter], and 2 bytes as the start and end angle of the arc (as a [`unorm7`](#unorm7) where 0.0 = 0 degrees and 1.0 = 360 degrees) |
+| CircleRingArcOrigin | 38    | 4          | A circular ring arc located at (0, 0), using 2 bytes as the [inner_diameter, outer_diameter] and 2 bytes as the start and end angle of the arc (as a [`unorm7`](#unorm7) where 0.0 = 0 degrees and 1.0 = 360 degrees). This is intended as a standalone shape to compose multiple glyphs |
 | CircleRingOffset    | 31    | 4          | The radii of a circular ring, using 1 vertex [[Radius Outer, Radius Inner]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
 | ElipseRingRadius   | 12    | 2          | The radii of an axis-aligned eliptic ring, using 2 vertices as [[Radius Outer X, Radius Inner X], [Radius Outer Y, Radius Inner Y]]. This edge MUST be a 'Left' edge, and MUST be paired with a Point 'Right' edge |
 
